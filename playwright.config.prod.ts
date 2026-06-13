@@ -30,7 +30,7 @@ export default defineConfig({
         title: 'Playwright Best Practices Report',
         project: 'Playwright Best Practices',
         release: '1.0.0',
-        testEnvironment: process.env.TEST_ENV || 'QA',
+        testEnvironment: process.env.TEST_ENV || 'PROD',
         embedAssets: true,
         embedAttachments: true,
         outputFolder: 'playwright-html-report',

@@ -1,0 +1,212 @@
+name: Playwright Manual Run
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Select Environment'
+        required: true
+        default: 'qa'
+        type: choice
+        options:
+          - dev
+          - qa
+          - stage
+          - prod
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  test:
+    name: 🧪 ${{ github.event.inputs.environment }} | Google Chrome
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📚 Install dependencies
+        run: npm ci
+
+      # ✅ Cache Playwright browsers
+      - name: 🗄️ Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: 🎭 Install Playwright browsers (if not cached)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chrome --with-deps
+
+      - name: 🎭 Install Playwright dependencies (if cached)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps
+
+      # ✅ Clean old results
+      - name: 🧹 Clean previous results
+        run: |
+          rm -rf allure-results allure-report playwright-report playwright-html-report test-results
+
+      - name: 🧪 Run Tests
+        run: |
+          npx playwright test \
+            --config=playwright.config.${{ github.event.inputs.environment }}.ts \
+            --project="Google Chrome"
+        env:
+          CI: true
+
+      # ✅ Generate Allure Report
+      - name: 📊 Generate Allure Report
+        if: always()
+        run: |
+          if [ -d "allure-results" ]; then
+            npx allure generate allure-results --clean -o allure-report
+          else
+            echo "Allure results folder missing, skipping report generation."
+          fi
+
+      - name: 📊 Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ github.event.inputs.environment }}
+          path: playwright-report/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 📊 Upload Playwright HTML Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-html-report-${{ github.event.inputs.environment }}
+          path: playwright-html-report/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 📊 Upload Allure Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-report-${{ github.event.inputs.environment }}
+          path: allure-report/
+          retention-days: 30
+          if-no-files-found: warn
+
+      # ✅ Upload screenshots/videos only on failure
+      - name: 📸 Upload Test Results (Screenshots/Videos)
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results-${{ github.event.inputs.environment }}
+          path: test-results/
+          retention-days: 7
+
+  # ============================================
+  # Publish Reports to GitHub Pages
+  # ============================================
+  publish-reports:
+    name: 📈 Publish Reports
+    runs-on: ubuntu-latest
+    needs: test
+    if: always()
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📥 Download Playwright Report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report-${{ github.event.inputs.environment }}
+          path: gh-pages-deploy/${{ github.event.inputs.environment }}/playwright-report
+        continue-on-error: true
+
+      - name: 📥 Download Playwright HTML Report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-html-report-${{ github.event.inputs.environment }}
+          path: gh-pages-deploy/${{ github.event.inputs.environment }}/playwright-html-report
+        continue-on-error: true
+
+      - name: 📥 Download Allure Report
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-report-${{ github.event.inputs.environment }}
+          path: gh-pages-deploy/${{ github.event.inputs.environment }}/allure-report
+        continue-on-error: true
+
+      - name: 📝 Create Index Page
+        run: |
+          CURRENT_DATE=$(date '+%Y-%m-%d %H:%M:%S UTC')
+          ENV="${{ github.event.inputs.environment }}"
+          cat > gh-pages-deploy/index.html << HTMLEOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Playwright Best Practices - Reports</title>
+            <style>
+              body { font-family: Arial, sans-serif; max-width: 900px; margin: 50px auto; padding: 20px; }
+              h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+              .info { background: #e8f4fc; padding: 15px; border-radius: 8px; margin: 20px 0; }
+              .env-section { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 15px 0; }
+              a { color: #3498db; text-decoration: none; display: inline-block; margin: 5px 10px 5px 0; padding: 8px 16px; background: #ecf0f1; border-radius: 4px; }
+              a:hover { background: #3498db; color: white; }
+              .dev { border-left: 4px solid #27ae60; }
+              .qa { border-left: 4px solid #f39c12; }
+              .stage { border-left: 4px solid #9b59b6; }
+              .prod { border-left: 4px solid #e74c3c; }
+              .timestamp { color: #7f8c8d; font-size: 0.9em; }
+            </style>
+          </head>
+          <body>
+            <h1>🎭 Playwright Best Practices Reports</h1>
+            <p class="timestamp">Last updated: ${CURRENT_DATE}</p>
+            <div class="info">
+              <strong>🔹 Environment:</strong> ${ENV}<br>
+              <strong>🔹 Browser:</strong> Google Chrome
+            </div>
+            <div class="env-section ${ENV}">
+              <h3>📊 ${ENV^^} Environment Reports</h3>
+              <a href="./${ENV}/playwright-report/index.html">Playwright Report</a>
+              <a href="./${ENV}/playwright-html-report/index.html">HTML Report</a>
+              <a href="./${ENV}/allure-report/index.html">Allure Report</a>
+            </div>
+          </body>
+          </html>
+          HTMLEOF
+
+      - name: 🌐 Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: gh-pages-deploy
+          keep_files: true
+
+      - name: 🔗 Report URLs
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          REPO="nikhilkakde07/Playwright-BestPractices"
+          BASE="https://${REPO%/*}.github.io/${REPO#*/}"
+          echo "============================================"
+          echo "📊 REPORTS PUBLISHED!"
+          echo "============================================"
+          echo "🔹 Environment : $ENV"
+          echo "🔹 Browser     : Google Chrome"
+          echo ""
+          echo "🏠 Dashboard   : ${BASE}/"
+          echo "📊 Playwright  : ${BASE}/${ENV}/playwright-report/index.html"
+          echo "📊 HTML Report : ${BASE}/${ENV}/playwright-html-report/index.html"
+          echo "📊 Allure      : ${BASE}/${ENV}/allure-report/index.html"
+          echo "============================================"

@@ -145,7 +145,4 @@ jobs:
       # 6️⃣ Print final URLs
       - name: Report URLs
         run: |
-          echo "Reports Published!"
-          echo "Playwright Built-in: https://nikhilkakde07.github.io/Playwright-BestPractices/playwright-report/index.html"
-          echo "Playwright HTML Reporter: https://nikhilkakde07.github.io/Playwright-BestPractices/playwright-html-report/index.html"
-          echo "Allure: https://nikhilkakde07.github.io/Playwright-BestPractices/allure-report/index.html"
+         
