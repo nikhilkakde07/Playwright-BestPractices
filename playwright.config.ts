@@ -73,29 +73,29 @@ export default defineConfig({
           ignoreDefaultArgs: ['--window-size=1280,720']
         }
       }
-    }
+    },
 
-    // Uncomment below when needed
 
-    // {
-    //   name: 'Microsoft Edge',
-    //   use: {
-    //     channel: 'msedge'
-    //   }
-    // },
 
-    // {
-    //   name: 'Firefox',
-    //   use: {
-    //     ...devices['Desktop Firefox']
-    //   }
-    // },
+     {
+      name: 'Microsoft Edge',
+       use: {
+        channel: 'msedge'
+       }
+     },
 
-    // {
-    //   name: 'WebKit',
-    //   use: {
-    //     ...devices['Desktop Safari']
-    //   }
-    // }
+     {
+       name: 'Firefox',
+       use: {
+         ...devices['Desktop Firefox']
+       }
+     },
+
+     {
+       name: 'WebKit',
+       use: {
+         ...devices['Desktop Safari']
+       }
+     }
   ]
 });

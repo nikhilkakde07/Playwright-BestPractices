@@ -14,12 +14,23 @@ on:
           - stage
           - prod
 
+      browser:
+        description: 'Select Browser'
+        required: true
+        default: 'Google Chrome'
+        type: choice
+        options:
+          - Google Chrome
+          - Microsoft Edge
+          - Firefox
+          - WebKit
+
 env:
   NODE_VERSION: '18'
 
 jobs:
   test:
-    name: 🧪 ${{ github.event.inputs.environment }} | Google Chrome
+    name: 🧪 ${{ github.event.inputs.environment }} | ${{ github.event.inputs.browser }}
     runs-on: ubuntu-latest
 
     steps:
@@ -47,7 +58,7 @@ jobs:
 
       - name: 🎭 Install Playwright browsers (if not cached)
         if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install chrome --with-deps
+        run: npx playwright install --with-deps
 
       - name: 🎭 Install Playwright dependencies (if cached)
         if: steps.playwright-cache.outputs.cache-hit == 'true'
@@ -62,7 +73,7 @@ jobs:
         run: |
           npx playwright test \
             --config=playwright.config.${{ github.event.inputs.environment }}.ts \
-            --project="Google Chrome"
+            --project="${{ github.event.inputs.browser }}"
         env:
           CI: true
 
@@ -150,6 +161,7 @@ jobs:
         run: |
           CURRENT_DATE=$(date '+%Y-%m-%d %H:%M:%S UTC')
           ENV="${{ github.event.inputs.environment }}"
+          BROWSER="${{ github.event.inputs.browser }}"
           cat > gh-pages-deploy/index.html << HTMLEOF
           <!DOCTYPE html>
           <html>
@@ -174,7 +186,7 @@ jobs:
             <p class="timestamp">Last updated: ${CURRENT_DATE}</p>
             <div class="info">
               <strong>🔹 Environment:</strong> ${ENV}<br>
-              <strong>🔹 Browser:</strong> Google Chrome
+              <strong>🔹 Browser:</strong> ${BROWSER}
             </div>
             <div class="env-section ${ENV}">
               <h3>📊 ${ENV^^} Environment Reports</h3>
@@ -197,13 +209,13 @@ jobs:
       - name: 🔗 Report URLs
         run: |
           ENV="${{ github.event.inputs.environment }}"
-          REPO="nikhilkakde07/Playwright-BestPractices"
-          BASE="https://${REPO%/*}.github.io/${REPO#*/}"
+          BROWSER="${{ github.event.inputs.browser }}"
+          BASE="https://nikhilkakde07.github.io/Playwright-BestPractices"
           echo "============================================"
           echo "📊 REPORTS PUBLISHED!"
           echo "============================================"
           echo "🔹 Environment : $ENV"
-          echo "🔹 Browser     : Google Chrome"
+          echo "🔹 Browser     : $BROWSER"
           echo ""
           echo "🏠 Dashboard   : ${BASE}/"
           echo "📊 Playwright  : ${BASE}/${ENV}/playwright-report/index.html"
