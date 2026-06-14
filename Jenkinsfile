@@ -439,9 +439,9 @@ pipeline {
                     // Generate Combined Allure Report using Allure Jenkins Plugin
                     allure([
                         includeProperties: true,
-                        jdk: '',
+                        //jdk: '',
                         properties: [],
-                        reportBuildPolicy: 'ALWAYS',
+                        //reportBuildPolicy: 'ALWAYS',
                         results: [[path: 'allure-results-combined']]
                     ])
                 }
