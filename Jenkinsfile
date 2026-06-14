@@ -449,7 +449,7 @@ pipeline {
                 }
             } */post {
     always {
-        allure properties: true, name: 'allure-results-combined'
+        allure 'allure-results-combined'
     }
 }
         }
