@@ -54,7 +54,7 @@ pipeline {
         // ✅ FIX 2: Use YOUR credential ID (matches what you saved in Jenkins)
         SLACK_WEBHOOK_URL        = credentials('slack-webhook-token')
         // ✅ FIX 3: Your email address
-        EMAIL_RECIPIENTS         = 'nikhilkakde967@gmail.com'
+        EMAIL_RECIPIENTS         = 'nikhilkakde07@gmail.com'
     }
 
     options {
@@ -131,7 +131,7 @@ pipeline {
                 echo 'Installing Playwright browsers...'
                 echo '============================================'
                 // Install only chromium for DEV (faster)
-                bat 'npx playwright install --with-deps chromium'
+                bat 'npx playwright install --with-deps'
 
                 echo '============================================'
                 echo 'Cleaning previous results...'
