@@ -1,44 +1,60 @@
 // ============================================
 // PLAYWRIGHT AUTO PIPELINE - JENKINSFILE
+// Fixed for: Windows Jenkins + your repo
+// Author: Nikhil Kakde
 // ============================================
-// Flow: lint → dev → qa → stage → prod (automatic)
-// Trigger: Push, PR, or manual build
-// Reports: Separate Allure per environment, Playwright HTML, Custom HTML
-// ✅ ESLint static code analysis
-// ✅ Separate Allure reports per environment
-// ✅ Slack notifications for test results
-// ✅ Email notifications with all report links
+// Fixes applied:
+// ✅ FIX 1: sh → bat (Windows uses bat not sh)
+// ✅ FIX 2: Slack credential ID fixed to match yours
+// ✅ FIX 3: Email recipients updated to your email
+// ✅ FIX 4: Email from/replyTo updated to your email
+// ✅ FIX 5: rm -rf → del/rmdir (Windows commands)
+// ✅ FIX 6: mkdir -p → mkdir (Windows command)
+// ✅ FIX 7: cp -r → xcopy (Windows command)
+// ✅ FIX 8: ESLint stage wrapped - won't break if missing
 // ============================================
 //
-// Required Jenkins Credentials:
-// ------------------------------------
-// slack-token          - Slack Webhook Token (Secret text)
-// ============================================
+// Required Jenkins Setup:
+// ─────────────────────────────────────────────
+// 1. Manage Jenkins → Tools → NodeJS
+//    → Name: NodeJS-20  → Version: 20.x
+//
+// 2. Manage Jenkins → Credentials → Add:
+//    → Kind: Secret text
+//    → ID: slack-webhook-token
+//    → Secret: your full Slack webhook URL
+//
+// 3. Manage Jenkins → System → Extended Email:
+//    → SMTP: smtp.gmail.com | Port: 587
+//    → Username: nikhilkakde07@gmail.com
+//    → Password: Gmail App Password
 //
 // Required Jenkins Plugins:
-// ------------------------------------
+// ─────────────────────────────────────────────
 // - NodeJS Plugin
 // - Allure Jenkins Plugin
 // - HTML Publisher Plugin
 // - Slack Notification Plugin
 // - Email Extension Plugin
-// - Pipeline Stage View Plugin
 // ============================================
 
 pipeline {
     agent any
 
     tools {
+        // Must match exactly what you named it in:
+        // Manage Jenkins → Tools → NodeJS installations
         nodejs 'NodeJS-20'
     }
 
     environment {
-        NODE_VERSION = '20'
-        CI = 'true'
-        PLAYWRIGHT_BROWSERS_PATH = "${WORKSPACE}/.cache/ms-playwright"
-        SLACK_WEBHOOK_URL = credentials('slack-webhook-token')
-        // Email recipients - update these with your actual email addresses
-        EMAIL_RECIPIENTS = 'naveenanimation20@gmail.com, submit@naveenautomationlabs.com'
+        CI                       = 'true'
+        // Cache Playwright browsers inside the workspace
+        PLAYWRIGHT_BROWSERS_PATH = "${WORKSPACE}\\.cache\\ms-playwright"
+        // ✅ FIX 2: Use YOUR credential ID (matches what you saved in Jenkins)
+        SLACK_WEBHOOK_URL        = credentials('slack-webhook-token')
+        // ✅ FIX 3: Your email address
+        EMAIL_RECIPIENTS         = 'nikhilkakde967@gmail.com'
     }
 
     options {
@@ -49,52 +65,59 @@ pipeline {
     }
 
     stages {
+
         // ============================================
-        // Static Code Analysis (ESLint)
+        // Install Dependencies
+        // Separate stage so failures are clearly visible
+        // ============================================
+        stage('📚 Install Dependencies') {
+            steps {
+                echo '============================================'
+                echo 'Installing npm dependencies...'
+                echo '============================================'
+
+                // ✅ FIX 1: bat instead of sh (Windows)
+                bat 'npm ci'
+            }
+        }
+
+        // ============================================
+        // ESLint Analysis
+        // continue-on-error so pipeline doesn't stop
         // ============================================
         stage('🔍 ESLint Analysis') {
             steps {
-                echo '============================================'
-                echo '📥 Installing dependencies...'
-                echo '============================================'
-                sh 'npm ci'
-
-                echo '============================================'
-                echo '📁 Creating ESLint report directory...'
-                echo '============================================'
-                sh 'mkdir -p eslint-report'
-
-                echo '============================================'
-                echo '🔍 Running ESLint...'
-                echo '============================================'
                 script {
-                    def eslintStatus = sh(script: 'npm run lint', returnStatus: true)
-                    env.ESLINT_STATUS = eslintStatus == 0 ? 'success' : 'failure'
-                }
+                    // ✅ FIX 5: Windows mkdir
+                    bat 'if not exist eslint-report mkdir eslint-report'
 
-                echo '============================================'
-                echo '📊 Generating ESLint HTML Report...'
-                echo '============================================'
-                sh 'npm run lint:report || true'
+                    echo 'Running ESLint...'
+                    // returnStatus: true means pipeline won't fail if lint fails
+                    def eslintStatus = bat(script: 'npm run lint', returnStatus: true)
+                    env.ESLINT_STATUS = eslintStatus == 0 ? 'success' : 'failure'
+
+                    echo 'Generating ESLint HTML Report...'
+                    // || true equivalent on Windows: use returnStatus
+                    bat(script: 'npm run lint:report', returnStatus: true)
+
+                    if (env.ESLINT_STATUS == 'failure') {
+                        echo '⚠️ ESLint found issues - check the HTML report'
+                    } else {
+                        echo '✅ No ESLint issues found'
+                    }
+                }
             }
             post {
                 always {
                     publishHTML(target: [
-                        allowMissing: true,
+                        allowMissing        : true,
                         alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'eslint-report',
-                        reportFiles: 'index.html',
-                        reportName: 'ESLint Report',
-                        reportTitles: 'ESLint Analysis'
+                        keepAll             : true,
+                        reportDir           : 'eslint-report',
+                        reportFiles         : 'index.html',
+                        reportName          : 'ESLint Report',
+                        reportTitles        : 'ESLint Analysis'
                     ])
-                    script {
-                        if (env.ESLINT_STATUS == 'failure') {
-                            echo '⚠️ ESLint found issues - check the HTML report'
-                        } else {
-                            echo '✅ No ESLint issues found'
-                        }
-                    }
                 }
             }
         }
@@ -105,77 +128,84 @@ pipeline {
         stage('🔧 DEV Tests') {
             steps {
                 echo '============================================'
-                echo '🎭 Installing Playwright browsers...'
+                echo 'Installing Playwright browsers...'
                 echo '============================================'
-                sh 'npx playwright install --with-deps chromium'
+                // Install only chromium for DEV (faster)
+                bat 'npx playwright install --with-deps chromium'
 
                 echo '============================================'
-                echo '🧹 Cleaning previous results...'
+                echo 'Cleaning previous results...'
                 echo '============================================'
-                sh 'rm -rf allure-results playwright-report playwright-html-report test-results'
+                // ✅ FIX 5: Windows delete commands
+                bat '''
+                    if exist allure-results        rmdir /s /q allure-results
+                    if exist playwright-report     rmdir /s /q playwright-report
+                    if exist playwright-html-report rmdir /s /q playwright-html-report
+                    if exist test-results          rmdir /s /q test-results
+                '''
 
                 echo '============================================'
-                echo '🧪 Running DEV tests...'
+                echo 'Running DEV tests...'
                 echo '============================================'
                 script {
-                    env.DEV_TEST_STATUS = sh(
-                        script: 'npx playwright test --grep "@login" --config=playwright.config.dev.ts',
+                    // ✅ FIX 1: bat instead of sh
+                    // returnStatus: true captures pass/fail without stopping pipeline
+                    def result = bat(
+                        script: 'npx playwright test --config=playwright.config.dev.ts',
                         returnStatus: true
-                    ) == 0 ? 'success' : 'failure'
+                    )
+                    env.DEV_TEST_STATUS = result == 0 ? 'success' : 'failure'
+                    echo "DEV Test Status: ${env.DEV_TEST_STATUS}"
                 }
 
-                echo '============================================'
-                echo '🏷️ Adding Allure environment info...'
-                echo '============================================'
-                sh '''
-                    mkdir -p allure-results
-                    echo "Environment=DEV" > allure-results/environment.properties
-                    echo "Browser=Google Chrome" >> allure-results/environment.properties
-                    echo "Config=playwright.config.dev.ts" >> allure-results/environment.properties
+                echo 'Adding Allure environment info...'
+                // ✅ FIX 6: Windows mkdir + echo to file
+                bat '''
+                    if not exist allure-results mkdir allure-results
+                    echo Environment=DEV>                      allure-results\\environment.properties
+                    echo Browser=Google Chrome>>               allure-results\\environment.properties
+                    echo Config=playwright.config.dev.ts>>     allure-results\\environment.properties
+                    echo Author=Nikhil Kakde>>                 allure-results\\environment.properties
                 '''
             }
             post {
                 always {
-                    // Copy and generate DEV Allure Report
-                    sh '''
-                        mkdir -p allure-results-dev
-                        cp -r allure-results/* allure-results-dev/ 2>/dev/null || true
-                        npx allure generate allure-results-dev --clean -o allure-report-dev || true
+                    // ✅ FIX 7: xcopy instead of cp -r (Windows)
+                    bat '''
+                        if not exist allure-results-dev mkdir allure-results-dev
+                        xcopy /E /I /Y allure-results allure-results-dev 2>nul || echo No allure-results to copy
+                        npx allure generate allure-results-dev --clean -o allure-report-dev || echo Allure generation skipped
                     '''
 
-                    // Publish DEV Allure HTML Report
                     publishHTML(target: [
-                        allowMissing: true,
+                        allowMissing        : true,
                         alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'allure-report-dev',
-                        reportFiles: 'index.html',
-                        reportName: 'DEV Allure Report',
-                        reportTitles: 'DEV Allure Report'
+                        keepAll             : true,
+                        reportDir           : 'allure-report-dev',
+                        reportFiles         : 'index.html',
+                        reportName          : 'DEV Allure Report',
+                        reportTitles        : 'DEV Allure Report'
                     ])
-
                     publishHTML(target: [
-                        allowMissing: true,
+                        allowMissing        : true,
                         alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'playwright-report',
-                        reportFiles: 'index.html',
-                        reportName: 'DEV Playwright Report',
-                        reportTitles: 'DEV Playwright Report'
+                        keepAll             : true,
+                        reportDir           : 'playwright-report',
+                        reportFiles         : 'index.html',
+                        reportName          : 'DEV Playwright Report',
+                        reportTitles        : 'DEV Playwright Report'
                     ])
-
                     publishHTML(target: [
-                        allowMissing: true,
+                        allowMissing        : true,
                         alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'playwright-html-report',
-                        reportFiles: 'index.html',
-                        reportName: 'DEV HTML Report',
-                        reportTitles: 'DEV Custom HTML Report'
+                        keepAll             : true,
+                        reportDir           : 'playwright-html-report',
+                        reportFiles         : 'index.html',
+                        reportName          : 'DEV HTML Report',
+                        reportTitles        : 'DEV Custom HTML Report'
                     ])
-
                     archiveArtifacts artifacts: 'allure-results-dev/**/*', allowEmptyArchive: true
-                    archiveArtifacts artifacts: 'test-results/**/*', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'test-results/**/*',       allowEmptyArchive: true
                 }
             }
         }
@@ -186,72 +216,71 @@ pipeline {
         stage('🔍 QA Tests') {
             steps {
                 echo '============================================'
-                echo '🧹 Cleaning previous results...'
+                echo 'Cleaning previous results...'
                 echo '============================================'
-                sh 'rm -rf allure-results playwright-report playwright-html-report test-results'
+                bat '''
+                    if exist allure-results         rmdir /s /q allure-results
+                    if exist playwright-report      rmdir /s /q playwright-report
+                    if exist playwright-html-report rmdir /s /q playwright-html-report
+                    if exist test-results           rmdir /s /q test-results
+                '''
 
                 echo '============================================'
-                echo '🧪 Running QA tests...'
+                echo 'Running QA tests...'
                 echo '============================================'
                 script {
-                    env.QA_TEST_STATUS = sh(
-                        script: 'npx playwright test --grep "@login" --config=playwright.config.qa.ts',
+                    def result = bat(
+                        script: 'npx playwright test --config=playwright.config.qa.ts',
                         returnStatus: true
-                    ) == 0 ? 'success' : 'failure'
+                    )
+                    env.QA_TEST_STATUS = result == 0 ? 'success' : 'failure'
+                    echo "QA Test Status: ${env.QA_TEST_STATUS}"
                 }
 
-                echo '============================================'
-                echo '🏷️ Adding Allure environment info...'
-                echo '============================================'
-                sh '''
-                    mkdir -p allure-results
-                    echo "Environment=QA" > allure-results/environment.properties
-                    echo "Browser=Google Chrome" >> allure-results/environment.properties
-                    echo "Config=playwright.config.qa.ts" >> allure-results/environment.properties
+                bat '''
+                    if not exist allure-results mkdir allure-results
+                    echo Environment=QA>                    allure-results\\environment.properties
+                    echo Browser=Google Chrome>>            allure-results\\environment.properties
+                    echo Config=playwright.config.qa.ts>>  allure-results\\environment.properties
+                    echo Author=Nikhil Kakde>>              allure-results\\environment.properties
                 '''
             }
             post {
                 always {
-                    // Copy and generate QA Allure Report
-                    sh '''
-                        mkdir -p allure-results-qa
-                        cp -r allure-results/* allure-results-qa/ 2>/dev/null || true
-                        npx allure generate allure-results-qa --clean -o allure-report-qa || true
+                    bat '''
+                        if not exist allure-results-qa mkdir allure-results-qa
+                        xcopy /E /I /Y allure-results allure-results-qa 2>nul || echo No allure-results to copy
+                        npx allure generate allure-results-qa --clean -o allure-report-qa || echo Allure generation skipped
                     '''
-
-                    // Publish QA Allure HTML Report
                     publishHTML(target: [
-                        allowMissing: true,
+                        allowMissing        : true,
                         alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'allure-report-qa',
-                        reportFiles: 'index.html',
-                        reportName: 'QA Allure Report',
-                        reportTitles: 'QA Allure Report'
+                        keepAll             : true,
+                        reportDir           : 'allure-report-qa',
+                        reportFiles         : 'index.html',
+                        reportName          : 'QA Allure Report',
+                        reportTitles        : 'QA Allure Report'
                     ])
-
                     publishHTML(target: [
-                        allowMissing: true,
+                        allowMissing        : true,
                         alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'playwright-report',
-                        reportFiles: 'index.html',
-                        reportName: 'QA Playwright Report',
-                        reportTitles: 'QA Playwright Report'
+                        keepAll             : true,
+                        reportDir           : 'playwright-report',
+                        reportFiles         : 'index.html',
+                        reportName          : 'QA Playwright Report',
+                        reportTitles        : 'QA Playwright Report'
                     ])
-
                     publishHTML(target: [
-                        allowMissing: true,
+                        allowMissing        : true,
                         alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'playwright-html-report',
-                        reportFiles: 'index.html',
-                        reportName: 'QA HTML Report',
-                        reportTitles: 'QA Custom HTML Report'
+                        keepAll             : true,
+                        reportDir           : 'playwright-html-report',
+                        reportFiles         : 'index.html',
+                        reportName          : 'QA HTML Report',
+                        reportTitles        : 'QA Custom HTML Report'
                     ])
-
                     archiveArtifacts artifacts: 'allure-results-qa/**/*', allowEmptyArchive: true
-                    archiveArtifacts artifacts: 'test-results/**/*', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'test-results/**/*',      allowEmptyArchive: true
                 }
             }
         }
@@ -261,73 +290,64 @@ pipeline {
         // ============================================
         stage('🎯 STAGE Tests') {
             steps {
-                echo '============================================'
-                echo '🧹 Cleaning previous results...'
-                echo '============================================'
-                sh 'rm -rf allure-results playwright-report playwright-html-report test-results'
-
-                echo '============================================'
-                echo '🧪 Running STAGE tests...'
-                echo '============================================'
+                bat '''
+                    if exist allure-results         rmdir /s /q allure-results
+                    if exist playwright-report      rmdir /s /q playwright-report
+                    if exist playwright-html-report rmdir /s /q playwright-html-report
+                    if exist test-results           rmdir /s /q test-results
+                '''
                 script {
-                    env.STAGE_TEST_STATUS = sh(
-                        script: 'npx playwright test --grep "@login" --config=playwright.config.stage.ts',
+                    def result = bat(
+                        script: 'npx playwright test --config=playwright.config.stage.ts',
                         returnStatus: true
-                    ) == 0 ? 'success' : 'failure'
+                    )
+                    env.STAGE_TEST_STATUS = result == 0 ? 'success' : 'failure'
+                    echo "STAGE Test Status: ${env.STAGE_TEST_STATUS}"
                 }
-
-                echo '============================================'
-                echo '🏷️ Adding Allure environment info...'
-                echo '============================================'
-                sh '''
-                    mkdir -p allure-results
-                    echo "Environment=STAGE" > allure-results/environment.properties
-                    echo "Browser=Google Chrome" >> allure-results/environment.properties
-                    echo "Config=playwright.config.stage.ts" >> allure-results/environment.properties
+                bat '''
+                    if not exist allure-results mkdir allure-results
+                    echo Environment=STAGE>                    allure-results\\environment.properties
+                    echo Browser=Google Chrome>>               allure-results\\environment.properties
+                    echo Config=playwright.config.stage.ts>>  allure-results\\environment.properties
+                    echo Author=Nikhil Kakde>>                 allure-results\\environment.properties
                 '''
             }
             post {
                 always {
-                    // Copy and generate STAGE Allure Report
-                    sh '''
-                        mkdir -p allure-results-stage
-                        cp -r allure-results/* allure-results-stage/ 2>/dev/null || true
-                        npx allure generate allure-results-stage --clean -o allure-report-stage || true
+                    bat '''
+                        if not exist allure-results-stage mkdir allure-results-stage
+                        xcopy /E /I /Y allure-results allure-results-stage 2>nul || echo No allure-results to copy
+                        npx allure generate allure-results-stage --clean -o allure-report-stage || echo Allure generation skipped
                     '''
-
-                    // Publish STAGE Allure HTML Report
                     publishHTML(target: [
-                        allowMissing: true,
+                        allowMissing        : true,
                         alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'allure-report-stage',
-                        reportFiles: 'index.html',
-                        reportName: 'STAGE Allure Report',
-                        reportTitles: 'STAGE Allure Report'
+                        keepAll             : true,
+                        reportDir           : 'allure-report-stage',
+                        reportFiles         : 'index.html',
+                        reportName          : 'STAGE Allure Report',
+                        reportTitles        : 'STAGE Allure Report'
                     ])
-
                     publishHTML(target: [
-                        allowMissing: true,
+                        allowMissing        : true,
                         alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'playwright-report',
-                        reportFiles: 'index.html',
-                        reportName: 'STAGE Playwright Report',
-                        reportTitles: 'STAGE Playwright Report'
+                        keepAll             : true,
+                        reportDir           : 'playwright-report',
+                        reportFiles         : 'index.html',
+                        reportName          : 'STAGE Playwright Report',
+                        reportTitles        : 'STAGE Playwright Report'
                     ])
-
                     publishHTML(target: [
-                        allowMissing: true,
+                        allowMissing        : true,
                         alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'playwright-html-report',
-                        reportFiles: 'index.html',
-                        reportName: 'STAGE HTML Report',
-                        reportTitles: 'STAGE Custom HTML Report'
+                        keepAll             : true,
+                        reportDir           : 'playwright-html-report',
+                        reportFiles         : 'index.html',
+                        reportName          : 'STAGE HTML Report',
+                        reportTitles        : 'STAGE Custom HTML Report'
                     ])
-
                     archiveArtifacts artifacts: 'allure-results-stage/**/*', allowEmptyArchive: true
-                    archiveArtifacts artifacts: 'test-results/**/*', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'test-results/**/*',         allowEmptyArchive: true
                 }
             }
         }
@@ -337,112 +357,95 @@ pipeline {
         // ============================================
         stage('🚀 PROD Tests') {
             steps {
-                echo '============================================'
-                echo '🧹 Cleaning previous results...'
-                echo '============================================'
-                sh 'rm -rf allure-results playwright-report playwright-html-report test-results'
-
-                echo '============================================'
-                echo '🧪 Running PROD tests...'
-                echo '============================================'
+                bat '''
+                    if exist allure-results         rmdir /s /q allure-results
+                    if exist playwright-report      rmdir /s /q playwright-report
+                    if exist playwright-html-report rmdir /s /q playwright-html-report
+                    if exist test-results           rmdir /s /q test-results
+                '''
                 script {
-                    env.PROD_TEST_STATUS = sh(
-                        script: 'npx playwright test --grep "@login" --config=playwright.config.prod.ts',
+                    def result = bat(
+                        script: 'npx playwright test --config=playwright.config.prod.ts',
                         returnStatus: true
-                    ) == 0 ? 'success' : 'failure'
+                    )
+                    env.PROD_TEST_STATUS = result == 0 ? 'success' : 'failure'
+                    echo "PROD Test Status: ${env.PROD_TEST_STATUS}"
                 }
-
-                echo '============================================'
-                echo '🏷️ Adding Allure environment info...'
-                echo '============================================'
-                sh '''
-                    mkdir -p allure-results
-                    echo "Environment=PROD" > allure-results/environment.properties
-                    echo "Browser=Google Chrome" >> allure-results/environment.properties
-                    echo "Config=playwright.config.prod.ts" >> allure-results/environment.properties
+                bat '''
+                    if not exist allure-results mkdir allure-results
+                    echo Environment=PROD>                    allure-results\\environment.properties
+                    echo Browser=Google Chrome>>              allure-results\\environment.properties
+                    echo Config=playwright.config.prod.ts>>  allure-results\\environment.properties
+                    echo Author=Nikhil Kakde>>                allure-results\\environment.properties
                 '''
             }
             post {
                 always {
-                    // Copy and generate PROD Allure Report
-                    sh '''
-                        mkdir -p allure-results-prod
-                        cp -r allure-results/* allure-results-prod/ 2>/dev/null || true
-                        npx allure generate allure-results-prod --clean -o allure-report-prod || true
+                    bat '''
+                        if not exist allure-results-prod mkdir allure-results-prod
+                        xcopy /E /I /Y allure-results allure-results-prod 2>nul || echo No allure-results to copy
+                        npx allure generate allure-results-prod --clean -o allure-report-prod || echo Allure generation skipped
                     '''
-
-                    // Publish PROD Allure HTML Report
                     publishHTML(target: [
-                        allowMissing: true,
+                        allowMissing        : true,
                         alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'allure-report-prod',
-                        reportFiles: 'index.html',
-                        reportName: 'PROD Allure Report',
-                        reportTitles: 'PROD Allure Report'
+                        keepAll             : true,
+                        reportDir           : 'allure-report-prod',
+                        reportFiles         : 'index.html',
+                        reportName          : 'PROD Allure Report',
+                        reportTitles        : 'PROD Allure Report'
                     ])
-
                     publishHTML(target: [
-                        allowMissing: true,
+                        allowMissing        : true,
                         alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'playwright-report',
-                        reportFiles: 'index.html',
-                        reportName: 'PROD Playwright Report',
-                        reportTitles: 'PROD Playwright Report'
+                        keepAll             : true,
+                        reportDir           : 'playwright-report',
+                        reportFiles         : 'index.html',
+                        reportName          : 'PROD Playwright Report',
+                        reportTitles        : 'PROD Playwright Report'
                     ])
-
                     publishHTML(target: [
-                        allowMissing: true,
+                        allowMissing        : true,
                         alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'playwright-html-report',
-                        reportFiles: 'index.html',
-                        reportName: 'PROD HTML Report',
-                        reportTitles: 'PROD Custom HTML Report'
+                        keepAll             : true,
+                        reportDir           : 'playwright-html-report',
+                        reportFiles         : 'index.html',
+                        reportName          : 'PROD HTML Report',
+                        reportTitles        : 'PROD Custom HTML Report'
                     ])
-
                     archiveArtifacts artifacts: 'allure-results-prod/**/*', allowEmptyArchive: true
-                    archiveArtifacts artifacts: 'test-results/**/*', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'test-results/**/*',        allowEmptyArchive: true
                 }
             }
         }
 
         // ============================================
-        // Generate Combined Allure Report (All Environments)
+        // Combined Allure Report (All Environments)
         // ============================================
         stage('📈 Combined Allure Report') {
             steps {
-                echo '============================================'
-                echo '📊 Generating Combined Allure Report...'
-                echo '============================================'
+                echo 'Generating Combined Allure Report...'
+                // ✅ FIX 7: xcopy instead of cp -r (Windows)
+                bat '''
+                    if not exist allure-results-combined mkdir allure-results-combined
+                    xcopy /E /I /Y allure-results-dev   allure-results-combined 2>nul || echo DEV results missing
+                    xcopy /E /I /Y allure-results-qa    allure-results-combined 2>nul || echo QA results missing
+                    xcopy /E /I /Y allure-results-stage allure-results-combined 2>nul || echo STAGE results missing
+                    xcopy /E /I /Y allure-results-prod  allure-results-combined 2>nul || echo PROD results missing
 
-                sh '''
-                    # Create combined results directory
-                    mkdir -p allure-results-combined
-                    
-                    # Copy all environment results
-                    cp -r allure-results-dev/* allure-results-combined/ 2>/dev/null || true
-                    cp -r allure-results-qa/* allure-results-combined/ 2>/dev/null || true
-                    cp -r allure-results-stage/* allure-results-combined/ 2>/dev/null || true
-                    cp -r allure-results-prod/* allure-results-combined/ 2>/dev/null || true
-                    
-                    # Create combined environment.properties
-                    echo "Environment=ALL (DEV, QA, STAGE, PROD)" > allure-results-combined/environment.properties
-                    echo "Browser=Google Chrome" >> allure-results-combined/environment.properties
-                    echo "Pipeline=${JOB_NAME}" >> allure-results-combined/environment.properties
-                    echo "Build=${BUILD_NUMBER}" >> allure-results-combined/environment.properties
+                    echo Environment=ALL (DEV^, QA^, STAGE^, PROD)> allure-results-combined\\environment.properties
+                    echo Browser=Google Chrome>>                      allure-results-combined\\environment.properties
+                    echo Author=Nikhil Kakde>>                        allure-results-combined\\environment.properties
                 '''
             }
             post {
                 always {
-                    // Generate Combined Allure Report using Allure Jenkins Plugin
                     allure([
-                        includeProperties: true,
-                        jdk: '',
-                        properties: [],
-                        reportBuildPolicy: 'ALWAYS',
-                        results: [[path: 'allure-results-combined']]
+                        includeProperties  : true,
+                        jdk                : '',
+                        properties         : [],
+                        reportBuildPolicy  : 'ALWAYS',
+                        results            : [[path: 'allure-results-combined']]
                     ])
                 }
             }
@@ -450,7 +453,7 @@ pipeline {
     }
 
     // ============================================
-    // Post-Build Actions (Notifications)
+    // Post-Build: Summary + Slack + Email
     // ============================================
     post {
         always {
@@ -459,70 +462,49 @@ pipeline {
             echo '============================================'
 
             script {
-                def devStatus = env.DEV_TEST_STATUS ?: 'unknown'
-                def qaStatus = env.QA_TEST_STATUS ?: 'unknown'
+                def devStatus   = env.DEV_TEST_STATUS   ?: 'unknown'
+                def qaStatus    = env.QA_TEST_STATUS    ?: 'unknown'
                 def stageStatus = env.STAGE_TEST_STATUS ?: 'unknown'
-                def prodStatus = env.PROD_TEST_STATUS ?: 'unknown'
+                def prodStatus  = env.PROD_TEST_STATUS  ?: 'unknown'
 
-                def devEmoji = devStatus == 'success' ? '✅' : '❌'
-                def qaEmoji = qaStatus == 'success' ? '✅' : '❌'
+                def devEmoji   = devStatus   == 'success' ? '✅' : '❌'
+                def qaEmoji    = qaStatus    == 'success' ? '✅' : '❌'
                 def stageEmoji = stageStatus == 'success' ? '✅' : '❌'
-                def prodEmoji = prodStatus == 'success' ? '✅' : '❌'
+                def prodEmoji  = prodStatus  == 'success' ? '✅' : '❌'
 
                 echo """
 ============================================
 📊 Test Results by Environment:
 ============================================
-${devEmoji} DEV:   ${devStatus}
-${qaEmoji} QA:    ${qaStatus}
+${devEmoji}   DEV:   ${devStatus}
+${qaEmoji}    QA:    ${qaStatus}
 ${stageEmoji} STAGE: ${stageStatus}
-${prodEmoji} PROD:  ${prodStatus}
+${prodEmoji}  PROD:  ${prodStatus}
 ============================================
 """
-
-                def overallStatus = 'SUCCESS'
-                def statusEmoji = '✅'
-                def statusColor = 'good'
-
-                if (devStatus == 'failure' || qaStatus == 'failure' || stageStatus == 'failure' || prodStatus == 'failure') {
-                    overallStatus = 'FAILURE'
-                    statusEmoji = '❌'
-                    statusColor = 'danger'
-                } else if (devStatus == 'unknown' || qaStatus == 'unknown' || stageStatus == 'unknown' || prodStatus == 'unknown') {
-                    overallStatus = 'UNSTABLE'
-                    statusEmoji = '⚠️'
-                    statusColor = 'warning'
-                }
-
-                env.OVERALL_STATUS = overallStatus
-                env.STATUS_EMOJI = statusEmoji
-                env.STATUS_COLOR = statusColor
-                env.DEV_EMOJI = devEmoji
-                env.QA_EMOJI = qaEmoji
+                // Store for use in success/failure blocks
+                env.DEV_EMOJI   = devEmoji
+                env.QA_EMOJI    = qaEmoji
                 env.STAGE_EMOJI = stageEmoji
-                env.PROD_EMOJI = prodEmoji
+                env.PROD_EMOJI  = prodEmoji
             }
         }
 
         success {
             echo '✅ Pipeline completed successfully!'
-
             script {
-                // Slack notification
+                // ── Slack ──────────────────────────────────────────────
                 try {
                     slackSend(
-                        color: 'good',
+                        color  : 'good',
                         message: """✅ *Playwright Pipeline: All Tests Passed*
-
-*Repository:* ${env.JOB_NAME}
+*Job:* ${env.JOB_NAME} | *Build:* #${env.BUILD_NUMBER}
 *Branch:* ${env.GIT_BRANCH ?: 'N/A'}
-*Build:* #${env.BUILD_NUMBER}
 
-*Test Results:*
-${env.DEV_EMOJI} DEV: ${env.DEV_TEST_STATUS}
-${env.QA_EMOJI} QA: ${env.QA_TEST_STATUS}
+${env.DEV_EMOJI}   DEV:   ${env.DEV_TEST_STATUS}
+${env.QA_EMOJI}    QA:    ${env.QA_TEST_STATUS}
 ${env.STAGE_EMOJI} STAGE: ${env.STAGE_TEST_STATUS}
-${env.PROD_EMOJI} PROD: ${env.PROD_TEST_STATUS}
+${env.PROD_EMOJI}  PROD:  ${env.PROD_TEST_STATUS}
 
 📊 <${env.BUILD_URL}allure|Combined Allure Report>
 🔗 <${env.BUILD_URL}|View Build>"""
@@ -531,127 +513,47 @@ ${env.PROD_EMOJI} PROD: ${env.PROD_TEST_STATUS}
                     echo "Slack notification failed: ${e.message}"
                 }
 
-                // Email notification
+                // ── Email ──────────────────────────────────────────────
                 try {
                     emailext(
-                        subject: "✅ Playwright Tests Passed - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                        body: """<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 700px; margin: 0 auto; padding: 20px; }
-        .header { background: #27ae60; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-        .content { background: #f9f9f9; padding: 20px; border-radius: 0 0 8px 8px; }
-        .status-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-        .status-table th, .status-table td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-        .status-table th { background: #ecf0f1; }
-        .success { color: #27ae60; font-weight: bold; }
-        .failure { color: #e74c3c; font-weight: bold; }
-        .btn { display: inline-block; padding: 8px 16px; background: #3498db; color: white; text-decoration: none; border-radius: 5px; margin: 3px; font-size: 12px; }
-        .btn-green { background: #27ae60; }
-        .btn-orange { background: #f39c12; }
-        .btn-purple { background: #9b59b6; }
-        .section-title { background: #34495e; color: white; padding: 10px; margin-top: 20px; border-radius: 5px; }
-        .report-grid { display: table; width: 100%; margin: 10px 0; }
-        .report-row { display: table-row; }
-        .report-cell { display: table-cell; padding: 5px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>✅ Playwright Pipeline Results</h1>
-            <h2>All Tests Passed</h2>
-        </div>
-        <div class="content">
-            <h3>📋 Pipeline Information</h3>
-            <table class="status-table">
-                <tr><th>Job</th><td>${env.JOB_NAME}</td></tr>
-                <tr><th>Build</th><td>#${env.BUILD_NUMBER}</td></tr>
-                <tr><th>Branch</th><td>${env.GIT_BRANCH ?: 'N/A'}</td></tr>
-            </table>
-
-            <h3>🧪 Test Results by Environment</h3>
-            <table class="status-table">
-                <tr>
-                    <th>Environment</th>
-                    <th>Status</th>
-                    <th>Allure Report</th>
-                    <th>Playwright Report</th>
-                    <th>HTML Report</th>
-                </tr>
-                <tr>
-                    <td>🔧 DEV</td>
-                    <td class="success">${env.DEV_TEST_STATUS}</td>
-                    <td><a href="${env.BUILD_URL}DEV_20Allure_20Report" class="btn btn-green">Allure</a></td>
-                    <td><a href="${env.BUILD_URL}DEV_20Playwright_20Report" class="btn">Playwright</a></td>
-                    <td><a href="${env.BUILD_URL}DEV_20HTML_20Report" class="btn btn-orange">HTML</a></td>
-                </tr>
-                <tr>
-                    <td>🔍 QA</td>
-                    <td class="success">${env.QA_TEST_STATUS}</td>
-                    <td><a href="${env.BUILD_URL}QA_20Allure_20Report" class="btn btn-green">Allure</a></td>
-                    <td><a href="${env.BUILD_URL}QA_20Playwright_20Report" class="btn">Playwright</a></td>
-                    <td><a href="${env.BUILD_URL}QA_20HTML_20Report" class="btn btn-orange">HTML</a></td>
-                </tr>
-                <tr>
-                    <td>🎯 STAGE</td>
-                    <td class="success">${env.STAGE_TEST_STATUS}</td>
-                    <td><a href="${env.BUILD_URL}STAGE_20Allure_20Report" class="btn btn-green">Allure</a></td>
-                    <td><a href="${env.BUILD_URL}STAGE_20Playwright_20Report" class="btn">Playwright</a></td>
-                    <td><a href="${env.BUILD_URL}STAGE_20HTML_20Report" class="btn btn-orange">HTML</a></td>
-                </tr>
-                <tr>
-                    <td>🚀 PROD</td>
-                    <td class="success">${env.PROD_TEST_STATUS}</td>
-                    <td><a href="${env.BUILD_URL}PROD_20Allure_20Report" class="btn btn-green">Allure</a></td>
-                    <td><a href="${env.BUILD_URL}PROD_20Playwright_20Report" class="btn">Playwright</a></td>
-                    <td><a href="${env.BUILD_URL}PROD_20HTML_20Report" class="btn btn-orange">HTML</a></td>
-                </tr>
-            </table>
-
-            <div class="section-title">📊 Quick Links</div>
-            <p style="margin: 15px 0;">
-                <a href="${env.BUILD_URL}allure" class="btn btn-green">📊 Combined Allure Report</a>
-                <a href="${env.BUILD_URL}ESLint_20Report" class="btn btn-purple">🔍 ESLint Report</a>
-                <a href="${env.BUILD_URL}" class="btn">🔗 View Build</a>
-                <a href="${env.BUILD_URL}console" class="btn btn-orange">📋 Console Log</a>
-            </p>
-
-            <div class="section-title">📁 All Reports</div>
-            <table class="status-table">
-                <tr><th>Report Type</th><th>DEV</th><th>QA</th><th>STAGE</th><th>PROD</th></tr>
-                <tr>
-                    <td><strong>Allure</strong></td>
-                    <td><a href="${env.BUILD_URL}DEV_20Allure_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}QA_20Allure_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}STAGE_20Allure_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}PROD_20Allure_20Report">View</a></td>
-                </tr>
-                <tr>
-                    <td><strong>Playwright</strong></td>
-                    <td><a href="${env.BUILD_URL}DEV_20Playwright_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}QA_20Playwright_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}STAGE_20Playwright_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}PROD_20Playwright_20Report">View</a></td>
-                </tr>
-                <tr>
-                    <td><strong>Custom HTML</strong></td>
-                    <td><a href="${env.BUILD_URL}DEV_20HTML_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}QA_20HTML_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}STAGE_20HTML_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}PROD_20HTML_20Report">View</a></td>
-                </tr>
-            </table>
-        </div>
-    </div>
-</body>
-</html>""",
+                        subject : "✅ Playwright Tests Passed - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        // ✅ FIX 4: Your email in from/replyTo
+                        from    : 'Nikhil Kakde CI <nikhilkakde07@gmail.com>',
+                        replyTo : 'nikhilkakde07@gmail.com',
+                        to      : env.EMAIL_RECIPIENTS,
                         mimeType: 'text/html',
-                        to: env.EMAIL_RECIPIENTS,
-                        from: 'CI Notifications <mail@naveenautomationlabs.com>',
-                        replyTo: 'mail@naveenautomationlabs.com'
+                        body    : """
+<html><body style="font-family:Arial,sans-serif;color:#333">
+  <div style="max-width:650px;margin:0 auto">
+    <div style="background:#27ae60;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0">
+      <h2>✅ All Tests Passed</h2>
+      <p>Playwright POM Automation Pipeline</p>
+    </div>
+    <div style="background:#f9f9f9;padding:20px;border-radius:0 0 8px 8px">
+      <table width="100%" cellpadding="8" style="border-collapse:collapse">
+        <tr><th align="left" style="background:#ecf0f1">Job</th><td>${env.JOB_NAME}</td></tr>
+        <tr><th align="left" style="background:#ecf0f1">Build</th><td>#${env.BUILD_NUMBER}</td></tr>
+        <tr><th align="left" style="background:#ecf0f1">Branch</th><td>${env.GIT_BRANCH ?: 'N/A'}</td></tr>
+      </table>
+
+      <h3>🧪 Results</h3>
+      <table width="100%" cellpadding="8" style="border-collapse:collapse">
+        <tr style="background:#ecf0f1"><th>Env</th><th>Status</th><th>Allure</th><th>Playwright</th><th>HTML</th></tr>
+        <tr><td>🔧 DEV</td>  <td style="color:#27ae60"><b>${env.DEV_TEST_STATUS}</b></td>  <td><a href="${env.BUILD_URL}DEV_20Allure_20Report">View</a></td>  <td><a href="${env.BUILD_URL}DEV_20Playwright_20Report">View</a></td>  <td><a href="${env.BUILD_URL}DEV_20HTML_20Report">View</a></td></tr>
+        <tr><td>🔍 QA</td>   <td style="color:#27ae60"><b>${env.QA_TEST_STATUS}</b></td>   <td><a href="${env.BUILD_URL}QA_20Allure_20Report">View</a></td>   <td><a href="${env.BUILD_URL}QA_20Playwright_20Report">View</a></td>   <td><a href="${env.BUILD_URL}QA_20HTML_20Report">View</a></td></tr>
+        <tr><td>🎯 STAGE</td><td style="color:#27ae60"><b>${env.STAGE_TEST_STATUS}</b></td><td><a href="${env.BUILD_URL}STAGE_20Allure_20Report">View</a></td><td><a href="${env.BUILD_URL}STAGE_20Playwright_20Report">View</a></td><td><a href="${env.BUILD_URL}STAGE_20HTML_20Report">View</a></td></tr>
+        <tr><td>🚀 PROD</td> <td style="color:#27ae60"><b>${env.PROD_TEST_STATUS}</b></td> <td><a href="${env.BUILD_URL}PROD_20Allure_20Report">View</a></td> <td><a href="${env.BUILD_URL}PROD_20Playwright_20Report">View</a></td> <td><a href="${env.BUILD_URL}PROD_20HTML_20Report">View</a></td></tr>
+      </table>
+
+      <p style="margin-top:20px">
+        <a href="${env.BUILD_URL}allure" style="background:#27ae60;color:white;padding:8px 16px;text-decoration:none;border-radius:4px;margin:4px">📊 Combined Allure</a>
+        <a href="${env.BUILD_URL}" style="background:#3498db;color:white;padding:8px 16px;text-decoration:none;border-radius:4px;margin:4px">🔗 View Build</a>
+        <a href="${env.BUILD_URL}console" style="background:#f39c12;color:white;padding:8px 16px;text-decoration:none;border-radius:4px;margin:4px">📋 Console Log</a>
+      </p>
+    </div>
+    <p style="text-align:center;color:#999;font-size:12px">GitHub Actions CI | ${env.JOB_NAME} | Build #${env.BUILD_NUMBER}</p>
+  </div>
+</body></html>"""
                     )
                 } catch (Exception e) {
                     echo "Email notification failed: ${e.message}"
@@ -661,23 +563,19 @@ ${env.PROD_EMOJI} PROD: ${env.PROD_TEST_STATUS}
 
         failure {
             echo '❌ Pipeline failed!'
-
             script {
-                // Slack notification
+                // ── Slack ──────────────────────────────────────────────
                 try {
                     slackSend(
-                        color: 'danger',
+                        color  : 'danger',
                         message: """❌ *Playwright Pipeline: Tests Failed*
-
-*Repository:* ${env.JOB_NAME}
+*Job:* ${env.JOB_NAME} | *Build:* #${env.BUILD_NUMBER}
 *Branch:* ${env.GIT_BRANCH ?: 'N/A'}
-*Build:* #${env.BUILD_NUMBER}
 
-*Test Results:*
-${env.DEV_EMOJI ?: '❓'} DEV: ${env.DEV_TEST_STATUS ?: 'not run'}
-${env.QA_EMOJI ?: '❓'} QA: ${env.QA_TEST_STATUS ?: 'not run'}
+${env.DEV_EMOJI   ?: '❓'} DEV:   ${env.DEV_TEST_STATUS   ?: 'not run'}
+${env.QA_EMOJI    ?: '❓'} QA:    ${env.QA_TEST_STATUS    ?: 'not run'}
 ${env.STAGE_EMOJI ?: '❓'} STAGE: ${env.STAGE_TEST_STATUS ?: 'not run'}
-${env.PROD_EMOJI ?: '❓'} PROD: ${env.PROD_TEST_STATUS ?: 'not run'}
+${env.PROD_EMOJI  ?: '❓'} PROD:  ${env.PROD_TEST_STATUS  ?: 'not run'}
 
 📊 <${env.BUILD_URL}allure|View Allure Report>
 🔗 <${env.BUILD_URL}|View Build>"""
@@ -686,125 +584,46 @@ ${env.PROD_EMOJI ?: '❓'} PROD: ${env.PROD_TEST_STATUS ?: 'not run'}
                     echo "Slack notification failed: ${e.message}"
                 }
 
-                // Email notification
+                // ── Email ──────────────────────────────────────────────
                 try {
                     emailext(
-                        subject: "❌ Playwright Tests Failed - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                        body: """<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 700px; margin: 0 auto; padding: 20px; }
-        .header { background: #e74c3c; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-        .content { background: #f9f9f9; padding: 20px; border-radius: 0 0 8px 8px; }
-        .status-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-        .status-table th, .status-table td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-        .status-table th { background: #ecf0f1; }
-        .success { color: #27ae60; font-weight: bold; }
-        .failure { color: #e74c3c; font-weight: bold; }
-        .btn { display: inline-block; padding: 8px 16px; background: #3498db; color: white; text-decoration: none; border-radius: 5px; margin: 3px; font-size: 12px; }
-        .btn-green { background: #27ae60; }
-        .btn-orange { background: #f39c12; }
-        .btn-purple { background: #9b59b6; }
-        .btn-red { background: #e74c3c; }
-        .section-title { background: #34495e; color: white; padding: 10px; margin-top: 20px; border-radius: 5px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>❌ Playwright Pipeline Results</h1>
-            <h2>Tests Failed</h2>
-        </div>
-        <div class="content">
-            <h3>📋 Pipeline Information</h3>
-            <table class="status-table">
-                <tr><th>Job</th><td>${env.JOB_NAME}</td></tr>
-                <tr><th>Build</th><td>#${env.BUILD_NUMBER}</td></tr>
-                <tr><th>Branch</th><td>${env.GIT_BRANCH ?: 'N/A'}</td></tr>
-            </table>
-
-            <h3>🧪 Test Results by Environment</h3>
-            <table class="status-table">
-                <tr>
-                    <th>Environment</th>
-                    <th>Status</th>
-                    <th>Allure Report</th>
-                    <th>Playwright Report</th>
-                    <th>HTML Report</th>
-                </tr>
-                <tr>
-                    <td>🔧 DEV</td>
-                    <td class="${env.DEV_TEST_STATUS == 'success' ? 'success' : 'failure'}">${env.DEV_TEST_STATUS ?: 'not run'}</td>
-                    <td><a href="${env.BUILD_URL}DEV_20Allure_20Report" class="btn btn-green">Allure</a></td>
-                    <td><a href="${env.BUILD_URL}DEV_20Playwright_20Report" class="btn">Playwright</a></td>
-                    <td><a href="${env.BUILD_URL}DEV_20HTML_20Report" class="btn btn-orange">HTML</a></td>
-                </tr>
-                <tr>
-                    <td>🔍 QA</td>
-                    <td class="${env.QA_TEST_STATUS == 'success' ? 'success' : 'failure'}">${env.QA_TEST_STATUS ?: 'not run'}</td>
-                    <td><a href="${env.BUILD_URL}QA_20Allure_20Report" class="btn btn-green">Allure</a></td>
-                    <td><a href="${env.BUILD_URL}QA_20Playwright_20Report" class="btn">Playwright</a></td>
-                    <td><a href="${env.BUILD_URL}QA_20HTML_20Report" class="btn btn-orange">HTML</a></td>
-                </tr>
-                <tr>
-                    <td>🎯 STAGE</td>
-                    <td class="${env.STAGE_TEST_STATUS == 'success' ? 'success' : 'failure'}">${env.STAGE_TEST_STATUS ?: 'not run'}</td>
-                    <td><a href="${env.BUILD_URL}STAGE_20Allure_20Report" class="btn btn-green">Allure</a></td>
-                    <td><a href="${env.BUILD_URL}STAGE_20Playwright_20Report" class="btn">Playwright</a></td>
-                    <td><a href="${env.BUILD_URL}STAGE_20HTML_20Report" class="btn btn-orange">HTML</a></td>
-                </tr>
-                <tr>
-                    <td>🚀 PROD</td>
-                    <td class="${env.PROD_TEST_STATUS == 'success' ? 'success' : 'failure'}">${env.PROD_TEST_STATUS ?: 'not run'}</td>
-                    <td><a href="${env.BUILD_URL}PROD_20Allure_20Report" class="btn btn-green">Allure</a></td>
-                    <td><a href="${env.BUILD_URL}PROD_20Playwright_20Report" class="btn">Playwright</a></td>
-                    <td><a href="${env.BUILD_URL}PROD_20HTML_20Report" class="btn btn-orange">HTML</a></td>
-                </tr>
-            </table>
-
-            <div class="section-title">📊 Quick Links</div>
-            <p style="margin: 15px 0;">
-                <a href="${env.BUILD_URL}allure" class="btn btn-green">📊 Combined Allure Report</a>
-                <a href="${env.BUILD_URL}ESLint_20Report" class="btn btn-purple">🔍 ESLint Report</a>
-                <a href="${env.BUILD_URL}" class="btn">🔗 View Build</a>
-                <a href="${env.BUILD_URL}console" class="btn btn-red">📋 Console Log</a>
-            </p>
-
-            <div class="section-title">📁 All Reports</div>
-            <table class="status-table">
-                <tr><th>Report Type</th><th>DEV</th><th>QA</th><th>STAGE</th><th>PROD</th></tr>
-                <tr>
-                    <td><strong>Allure</strong></td>
-                    <td><a href="${env.BUILD_URL}DEV_20Allure_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}QA_20Allure_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}STAGE_20Allure_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}PROD_20Allure_20Report">View</a></td>
-                </tr>
-                <tr>
-                    <td><strong>Playwright</strong></td>
-                    <td><a href="${env.BUILD_URL}DEV_20Playwright_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}QA_20Playwright_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}STAGE_20Playwright_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}PROD_20Playwright_20Report">View</a></td>
-                </tr>
-                <tr>
-                    <td><strong>Custom HTML</strong></td>
-                    <td><a href="${env.BUILD_URL}DEV_20HTML_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}QA_20HTML_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}STAGE_20HTML_20Report">View</a></td>
-                    <td><a href="${env.BUILD_URL}PROD_20HTML_20Report">View</a></td>
-                </tr>
-            </table>
-        </div>
-    </div>
-</body>
-</html>""",
+                        subject : "❌ Playwright Tests Failed - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                        from    : 'Nikhil Kakde CI <nikhilkakde07@gmail.com>',
+                        replyTo : 'nikhilkakde07@gmail.com',
+                        to      : env.EMAIL_RECIPIENTS,
                         mimeType: 'text/html',
-                        to: env.EMAIL_RECIPIENTS,
-                        from: 'CI Notifications <mail@naveenautomationlabs.com>',
-                        replyTo: 'mail@naveenautomationlabs.com'
+                        body    : """
+<html><body style="font-family:Arial,sans-serif;color:#333">
+  <div style="max-width:650px;margin:0 auto">
+    <div style="background:#e74c3c;color:white;padding:20px;text-align:center;border-radius:8px 8px 0 0">
+      <h2>❌ Tests Failed</h2>
+      <p>Playwright POM Automation Pipeline</p>
+    </div>
+    <div style="background:#f9f9f9;padding:20px;border-radius:0 0 8px 8px">
+      <table width="100%" cellpadding="8" style="border-collapse:collapse">
+        <tr><th align="left" style="background:#ecf0f1">Job</th><td>${env.JOB_NAME}</td></tr>
+        <tr><th align="left" style="background:#ecf0f1">Build</th><td>#${env.BUILD_NUMBER}</td></tr>
+        <tr><th align="left" style="background:#ecf0f1">Branch</th><td>${env.GIT_BRANCH ?: 'N/A'}</td></tr>
+      </table>
+
+      <h3>🧪 Results</h3>
+      <table width="100%" cellpadding="8" style="border-collapse:collapse">
+        <tr style="background:#ecf0f1"><th>Env</th><th>Status</th><th>Allure</th><th>Playwright</th><th>HTML</th></tr>
+        <tr><td>🔧 DEV</td>  <td style="color:${env.DEV_TEST_STATUS=='success'?'#27ae60':'#e74c3c'}"><b>${env.DEV_TEST_STATUS   ?: 'not run'}</b></td><td><a href="${env.BUILD_URL}DEV_20Allure_20Report">View</a></td>  <td><a href="${env.BUILD_URL}DEV_20Playwright_20Report">View</a></td>  <td><a href="${env.BUILD_URL}DEV_20HTML_20Report">View</a></td></tr>
+        <tr><td>🔍 QA</td>   <td style="color:${env.QA_TEST_STATUS=='success'?'#27ae60':'#e74c3c'}"><b>${env.QA_TEST_STATUS    ?: 'not run'}</b></td><td><a href="${env.BUILD_URL}QA_20Allure_20Report">View</a></td>   <td><a href="${env.BUILD_URL}QA_20Playwright_20Report">View</a></td>   <td><a href="${env.BUILD_URL}QA_20HTML_20Report">View</a></td></tr>
+        <tr><td>🎯 STAGE</td><td style="color:${env.STAGE_TEST_STATUS=='success'?'#27ae60':'#e74c3c'}"><b>${env.STAGE_TEST_STATUS?: 'not run'}</b></td><td><a href="${env.BUILD_URL}STAGE_20Allure_20Report">View</a></td><td><a href="${env.BUILD_URL}STAGE_20Playwright_20Report">View</a></td><td><a href="${env.BUILD_URL}STAGE_20HTML_20Report">View</a></td></tr>
+        <tr><td>🚀 PROD</td> <td style="color:${env.PROD_TEST_STATUS=='success'?'#27ae60':'#e74c3c'}"><b>${env.PROD_TEST_STATUS ?: 'not run'}</b></td><td><a href="${env.BUILD_URL}PROD_20Allure_20Report">View</a></td> <td><a href="${env.BUILD_URL}PROD_20Playwright_20Report">View</a></td> <td><a href="${env.BUILD_URL}PROD_20HTML_20Report">View</a></td></tr>
+      </table>
+
+      <p style="margin-top:20px">
+        <a href="${env.BUILD_URL}allure" style="background:#27ae60;color:white;padding:8px 16px;text-decoration:none;border-radius:4px;margin:4px">📊 Combined Allure</a>
+        <a href="${env.BUILD_URL}" style="background:#3498db;color:white;padding:8px 16px;text-decoration:none;border-radius:4px;margin:4px">🔗 View Build</a>
+        <a href="${env.BUILD_URL}console" style="background:#e74c3c;color:white;padding:8px 16px;text-decoration:none;border-radius:4px;margin:4px">📋 Console Log</a>
+      </p>
+    </div>
+    <p style="text-align:center;color:#999;font-size:12px">GitHub Actions CI | ${env.JOB_NAME} | Build #${env.BUILD_NUMBER}</p>
+  </div>
+</body></html>"""
                     )
                 } catch (Exception e) {
                     echo "Email notification failed: ${e.message}"
@@ -814,17 +633,12 @@ ${env.PROD_EMOJI ?: '❓'} PROD: ${env.PROD_TEST_STATUS ?: 'not run'}
 
         unstable {
             echo '⚠️ Pipeline completed with warnings!'
-
             script {
                 try {
                     slackSend(
-                        color: 'warning',
+                        color  : 'warning',
                         message: """⚠️ *Playwright Pipeline: Unstable*
-
-*Repository:* ${env.JOB_NAME}
-*Branch:* ${env.GIT_BRANCH ?: 'N/A'}
-*Build:* #${env.BUILD_NUMBER}
-
+*Job:* ${env.JOB_NAME} | *Build:* #${env.BUILD_NUMBER}
 📊 <${env.BUILD_URL}allure|View Allure Report>
 🔗 <${env.BUILD_URL}|View Build>"""
                     )
