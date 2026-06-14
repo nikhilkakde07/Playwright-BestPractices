@@ -26,7 +26,7 @@ test('Verify invalid login', async ({page})=>{
  */
 
 import { LoginPage } from "../pages/LoginPage";
-import { test,Page,expect } from "@playwright/test";
+import { test,expect } from "@playwright/test";
 
 //npx playwright test tests/loginpage.spec.ts
 

@@ -143,7 +143,7 @@ constructor(page:Page){
    */
 
    async verifyLoginError(){
-    let loginerror=await this.loginErrorMsg.textContent()
+    const loginerror=await this.loginErrorMsg.textContent()
      console.log(`Invalid login message is : ${loginerror}`);
         return loginerror;
    }
