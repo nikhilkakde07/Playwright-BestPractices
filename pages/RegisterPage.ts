@@ -213,8 +213,7 @@ constructor(page:Page){
     // Step 18: Click Create Account button to submit the form
     await this.createAccountBtn.click();
   
-
-
+    
   }
 }
 
