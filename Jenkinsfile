@@ -434,18 +434,24 @@ pipeline {
                     echo "Build=${BUILD_NUMBER}" >> allure-results-combined/environment.properties
                 '''
             }
-            post {
+           /*  post {
                 always {
                     // Generate Combined Allure Report using Allure Jenkins Plugin
                     allure([
-                        includeProperties: true,
+                        //include
+                        properties: true,
                         //jdk: '',
-                        properties: [],
+                        //properties: [],
                         //reportBuildPolicy: 'ALWAYS',
-                        results: [[path: 'allure-results-combined']]
+                        //results
+                         name: [[path: 'allure-results-combined']]
                     ])
                 }
-            }
+            } */post {
+    always {
+        allure properties: true, name: 'allure-results-combined'
+    }
+}
         }
     }
 
