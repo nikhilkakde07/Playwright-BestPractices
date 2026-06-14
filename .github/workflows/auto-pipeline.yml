@@ -1,0 +1,843 @@
+# ============================================
+# PLAYWRIGHT AUTO PIPELINE
+# Project  : Playwright POM Automation
+# Author   : Nikhil Kakde
+# ============================================
+# Flow: dev → qa → stage → prod (automatic)
+# Trigger: Push to main/master/develop branches
+# Reports: Published to GitHub Pages
+# ✅ Google Chrome installed on CI runner
+# ✅ Allure + Playwright HTML Reporter integrated
+# ✅ Playwright browsers cached for faster runs
+# ✅ Email notifications after all jobs
+# ============================================
+#
+# Required Secrets (GitHub → Settings → Secrets → Actions):
+# ──────────────────────────────────────────────────────────
+# MAIL_SERVER         → smtp.gmail.com
+# MAIL_PORT           → 587
+# MAIL_USERNAME       → youremail@gmail.com
+# MAIL_PASSWORD       → Gmail App Password (16 digits)
+# MAIL_FROM           → youremail@gmail.com
+# NOTIFICATION_EMAILS → youremail@gmail.com
+#
+# Required Setup:
+# ──────────────────────────────────────────────────────────
+# 1. Replace YOUR_GITHUB_USERNAME and YOUR_REPO_NAME below
+# 2. Enable GitHub Pages: Repo → Settings → Pages
+#    → Source: Deploy from branch → gh-pages → / (root)
+# ============================================
+
+name: Playwright Auto Pipeline
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches: [main, master, develop]
+
+  pull_request:
+    branches: [main, master]
+
+env:
+  NODE_VERSION: '20'
+  BASE_URL: 'https://nikhilkakde07.github.io/Playwright-BestPractices'
+
+# ════════════════════════════════════════════════════
+# JOB 1 — DEV Tests
+# ════════════════════════════════════════════════════
+jobs:
+  dev-tests:
+    name: 🔧 DEV Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📚 Install dependencies
+        run: npm ci
+
+      # ── Install Google Chrome on the Ubuntu runner ──────────────────────
+      # Required because your config uses channel: 'chrome'
+      # which needs real Chrome, not Chromium
+      - name: 🌐 Install Google Chrome
+        run: |
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      # ── Cache Playwright browsers ───────────────────────────────────────
+      - name: 🗄️ Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: 🎭 Install Playwright browsers (if not cached)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps
+
+      - name: 🎭 Install Playwright system deps (if cached)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps
+
+      - name: 🧹 Clean previous results
+        run: rm -rf allure-results playwright-report playwright-html-report test-results
+
+      # ── Run DEV tests ───────────────────────────────────────────────────
+      # TEST_ENV=DEV is passed so playwright-html-reporter shows correct label
+      # Your config: testEnvironment: process.env.TEST_ENV || 'DEV'
+      - name: 🧪 Run DEV tests
+        run: npx playwright test --config=playwright.config.dev.ts
+        env:
+          CI: true
+          TEST_ENV: DEV
+
+      # ── Write environment info for Allure report ────────────────────────
+      - name: 🏷️ Add Allure environment info
+        if: always()
+        run: |
+          mkdir -p allure-results
+          echo "Environment=DEV"                      > allure-results/environment.properties
+          echo "Browser=Google Chrome"               >> allure-results/environment.properties
+          echo "Base URL=https://automationexercise.com" >> allure-results/environment.properties
+          echo "Config=playwright.config.dev.ts"     >> allure-results/environment.properties
+          echo "Author=Nikhil Kakde"                 >> allure-results/environment.properties
+
+      - name: 📊 Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-dev
+          path: playwright-report/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 📊 Upload HTML Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-html-report-dev
+          path: playwright-html-report/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 📊 Upload Allure Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-dev
+          path: allure-results/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 📸 Upload Test Results on Failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results-dev
+          path: test-results/
+          retention-days: 7
+
+# ════════════════════════════════════════════════════
+# JOB 2 — QA Tests (runs after DEV passes)
+# ════════════════════════════════════════════════════
+  qa-tests:
+    name: 🔍 QA Tests
+    runs-on: ubuntu-latest
+    needs: dev-tests
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📚 Install dependencies
+        run: npm ci
+
+      - name: 🌐 Install Google Chrome
+        run: |
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: 🗄️ Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: 🎭 Install Playwright browsers (if not cached)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps
+
+      - name: 🎭 Install Playwright system deps (if cached)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps
+
+      - name: 🧹 Clean previous results
+        run: rm -rf allure-results playwright-report playwright-html-report test-results
+
+      - name: 🧪 Run QA tests
+        run: npx playwright test --config=playwright.config.qa.ts
+        env:
+          CI: true
+          TEST_ENV: QA
+
+      - name: 🏷️ Add Allure environment info
+        if: always()
+        run: |
+          mkdir -p allure-results
+          echo "Environment=QA"                          > allure-results/environment.properties
+          echo "Browser=Google Chrome"                  >> allure-results/environment.properties
+          echo "Base URL=https://automationexercise.com" >> allure-results/environment.properties
+          echo "Config=playwright.config.qa.ts"         >> allure-results/environment.properties
+          echo "Author=Nikhil Kakde"                    >> allure-results/environment.properties
+
+      - name: 📊 Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-qa
+          path: playwright-report/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 📊 Upload HTML Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-html-report-qa
+          path: playwright-html-report/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 📊 Upload Allure Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-qa
+          path: allure-results/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 📸 Upload Test Results on Failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results-qa
+          path: test-results/
+          retention-days: 7
+
+# ════════════════════════════════════════════════════
+# JOB 3 — STAGE Tests (runs after QA passes)
+# ════════════════════════════════════════════════════
+  stage-tests:
+    name: 🎯 STAGE Tests
+    runs-on: ubuntu-latest
+    needs: qa-tests
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📚 Install dependencies
+        run: npm ci
+
+      - name: 🌐 Install Google Chrome
+        run: |
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: 🗄️ Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: 🎭 Install Playwright browsers (if not cached)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps
+
+      - name: 🎭 Install Playwright system deps (if cached)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps
+
+      - name: 🧹 Clean previous results
+        run: rm -rf allure-results playwright-report playwright-html-report test-results
+
+      - name: 🧪 Run STAGE tests
+        run: npx playwright test --config=playwright.config.stage.ts
+        env:
+          CI: true
+          TEST_ENV: STAGE
+
+      - name: 🏷️ Add Allure environment info
+        if: always()
+        run: |
+          mkdir -p allure-results
+          echo "Environment=STAGE"                        > allure-results/environment.properties
+          echo "Browser=Google Chrome"                   >> allure-results/environment.properties
+          echo "Base URL=https://automationexercise.com" >> allure-results/environment.properties
+          echo "Config=playwright.config.stage.ts"       >> allure-results/environment.properties
+          echo "Author=Nikhil Kakde"                     >> allure-results/environment.properties
+
+      - name: 📊 Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-stage
+          path: playwright-report/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 📊 Upload HTML Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-html-report-stage
+          path: playwright-html-report/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 📊 Upload Allure Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-stage
+          path: allure-results/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 📸 Upload Test Results on Failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results-stage
+          path: test-results/
+          retention-days: 7
+
+# ════════════════════════════════════════════════════
+# JOB 4 — PROD Tests (runs after STAGE passes)
+# PROD config has all 4 browsers active
+# ════════════════════════════════════════════════════
+  prod-tests:
+    name: 🚀 PROD Tests
+    runs-on: ubuntu-latest
+    needs: stage-tests
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: 📚 Install dependencies
+        run: npm ci
+
+      # ── PROD needs Chrome + Edge (real browsers, not Chromium) ──────────
+      - name: 🌐 Install Google Chrome
+        run: |
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+          echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      # ── Microsoft Edge is also needed for PROD (channel: 'msedge') ──────
+      - name: 🌐 Install Microsoft Edge
+        run: |
+          curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
+          sudo install -o root -g root -m 644 microsoft.gpg /etc/apt/trusted.gpg.d/
+          sudo sh -c 'echo "deb [arch=amd64] https://packages.microsoft.com/repos/edge stable main" > /etc/apt/sources.list.d/microsoft-edge-dev.list'
+          sudo apt-get update
+          sudo apt-get install -y microsoft-edge-stable
+
+      - name: 🗄️ Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      # Firefox and WebKit are installed via Playwright
+      - name: 🎭 Install Playwright browsers (if not cached)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps
+
+      - name: 🎭 Install Playwright system deps (if cached)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps
+
+      - name: 🧹 Clean previous results
+        run: rm -rf allure-results playwright-report playwright-html-report test-results
+
+      # PROD runs all 4 browsers: Chrome, Edge, Firefox, WebKit
+      - name: 🧪 Run PROD tests
+        run: npx playwright test --config=playwright.config.prod.ts
+        env:
+          CI: true
+          TEST_ENV: PROD
+
+      - name: 🏷️ Add Allure environment info
+        if: always()
+        run: |
+          mkdir -p allure-results
+          echo "Environment=PROD"                         > allure-results/environment.properties
+          echo "Browsers=Chrome | Edge | Firefox | WebKit" >> allure-results/environment.properties
+          echo "Base URL=https://automationexercise.com"  >> allure-results/environment.properties
+          echo "Config=playwright.config.prod.ts"         >> allure-results/environment.properties
+          echo "Author=Nikhil Kakde"                      >> allure-results/environment.properties
+
+      - name: 📊 Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-prod
+          path: playwright-report/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 📊 Upload HTML Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-html-report-prod
+          path: playwright-html-report/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 📊 Upload Allure Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-results-prod
+          path: allure-results/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: 📸 Upload Test Results on Failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results-prod
+          path: test-results/
+          retention-days: 7
+
+# ════════════════════════════════════════════════════
+# JOB 5 — Publish All Reports to GitHub Pages
+# Runs after ALL 4 environment jobs complete
+# ════════════════════════════════════════════════════
+  publish-reports:
+    name: 📈 Publish Reports
+    runs-on: ubuntu-latest
+    needs: [dev-tests, qa-tests, stage-tests, prod-tests]
+    if: always()
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      # ── Download all artifacts ───────────────────────────────────────────
+
+      - name: 📥 Download DEV Playwright Report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report-dev
+          path: github-pages/dev/playwright-report
+        continue-on-error: true
+
+      - name: 📥 Download DEV HTML Report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-html-report-dev
+          path: github-pages/dev/playwright-html-report
+        continue-on-error: true
+
+      - name: 📥 Download DEV Allure Results
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-results-dev
+          path: allure-results/dev
+        continue-on-error: true
+
+      - name: 📥 Download QA Playwright Report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report-qa
+          path: github-pages/qa/playwright-report
+        continue-on-error: true
+
+      - name: 📥 Download QA HTML Report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-html-report-qa
+          path: github-pages/qa/playwright-html-report
+        continue-on-error: true
+
+      - name: 📥 Download QA Allure Results
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-results-qa
+          path: allure-results/qa
+        continue-on-error: true
+
+      - name: 📥 Download STAGE Playwright Report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report-stage
+          path: github-pages/stage/playwright-report
+        continue-on-error: true
+
+      - name: 📥 Download STAGE HTML Report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-html-report-stage
+          path: github-pages/stage/playwright-html-report
+        continue-on-error: true
+
+      - name: 📥 Download STAGE Allure Results
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-results-stage
+          path: allure-results/stage
+        continue-on-error: true
+
+      - name: 📥 Download PROD Playwright Report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-report-prod
+          path: github-pages/prod/playwright-report
+        continue-on-error: true
+
+      - name: 📥 Download PROD HTML Report
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-html-report-prod
+          path: github-pages/prod/playwright-html-report
+        continue-on-error: true
+
+      - name: 📥 Download PROD Allure Results
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-results-prod
+          path: allure-results/prod
+        continue-on-error: true
+
+      # ── Setup Java + Allure CLI to generate Allure HTML ─────────────────
+      - name: 📦 Setup Java for Allure CLI
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 📊 Install Allure CLI
+        run: |
+          curl -o allure.tgz -Ls https://repo.maven.apache.org/maven2/io/qameta/allure/allure-commandline/2.24.0/allure-commandline-2.24.0.tgz
+          tar -zxvf allure.tgz
+          echo "ALLURE_PATH=$PWD/allure-2.24.0/bin/allure" >> $GITHUB_ENV
+
+      # ── Generate Allure HTML report per environment ──────────────────────
+      - name: 📊 Generate DEV Allure Report
+        run: |
+          if [ -d "allure-results/dev" ] && [ "$(ls -A allure-results/dev 2>/dev/null)" ]; then
+            $ALLURE_PATH generate allure-results/dev -o github-pages/dev/allure-report --clean
+            echo "✅ DEV Allure report generated"
+          else
+            echo "⚠️ No DEV allure results found"
+          fi
+
+      - name: 📊 Generate QA Allure Report
+        run: |
+          if [ -d "allure-results/qa" ] && [ "$(ls -A allure-results/qa 2>/dev/null)" ]; then
+            $ALLURE_PATH generate allure-results/qa -o github-pages/qa/allure-report --clean
+            echo "✅ QA Allure report generated"
+          else
+            echo "⚠️ No QA allure results found"
+          fi
+
+      - name: 📊 Generate STAGE Allure Report
+        run: |
+          if [ -d "allure-results/stage" ] && [ "$(ls -A allure-results/stage 2>/dev/null)" ]; then
+            $ALLURE_PATH generate allure-results/stage -o github-pages/stage/allure-report --clean
+            echo "✅ STAGE Allure report generated"
+          else
+            echo "⚠️ No STAGE allure results found"
+          fi
+
+      - name: 📊 Generate PROD Allure Report
+        run: |
+          if [ -d "allure-results/prod" ] && [ "$(ls -A allure-results/prod 2>/dev/null)" ]; then
+            $ALLURE_PATH generate allure-results/prod -o github-pages/prod/allure-report --clean
+            echo "✅ PROD Allure report generated"
+          else
+            echo "⚠️ No PROD allure results found"
+          fi
+
+      # ── Build the dashboard index.html ───────────────────────────────────
+      - name: 📝 Create Reports Dashboard
+        run: |
+          CURRENT_DATE=$(date '+%Y-%m-%d %H:%M:%S UTC')
+          cat > github-pages/index.html << EOF
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Playwright POM Automation - Reports | Nikhil Kakde</title>
+            <style>
+              * { box-sizing: border-box; }
+              body { font-family: Arial, sans-serif; max-width: 960px; margin: 50px auto; padding: 20px; background: #f0f2f5; }
+              h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+              .meta { background: #eaf4fb; padding: 12px 18px; border-radius: 8px; margin-bottom: 20px; font-size: 0.95em; }
+              .env-section { background: #fff; padding: 20px; border-radius: 8px; margin: 15px 0; box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
+              .env-section h3 { margin-top: 0; }
+              .browsers { font-size: 0.82em; color: #888; margin-top: 4px; }
+              a { color: #3498db; text-decoration: none; display: inline-block; margin: 6px 8px 6px 0; padding: 8px 16px; background: #ecf0f1; border-radius: 4px; font-size: 0.9em; }
+              a:hover { background: #3498db; color: white; }
+              .dev   { border-left: 4px solid #27ae60; }
+              .qa    { border-left: 4px solid #f39c12; }
+              .stage { border-left: 4px solid #9b59b6; }
+              .prod  { border-left: 4px solid #e74c3c; }
+              .timestamp { color: #7f8c8d; font-size: 0.85em; }
+            </style>
+          </head>
+          <body>
+            <h1>🎭 Playwright POM Automation - Test Reports</h1>
+            <div class="meta">
+              <strong>👤 Author:</strong> Nikhil Kakde &nbsp;|&nbsp;
+              <strong>🌐 Site:</strong> automationexercise.com &nbsp;|&nbsp;
+              <strong>🕐 Last Run:</strong> <span class="timestamp">${CURRENT_DATE}</span>
+            </div>
+
+            <div class="env-section dev">
+              <h3>🔧 DEV Environment</h3>
+              <p class="browsers">🖥️ Browser: Google Chrome</p>
+              <a href="./dev/playwright-report/index.html">📊 Playwright Report</a>
+              <a href="./dev/playwright-html-report/index.html">📄 HTML Report</a>
+              <a href="./dev/allure-report/index.html">📈 Allure Report</a>
+            </div>
+
+            <div class="env-section qa">
+              <h3>🔍 QA Environment</h3>
+              <p class="browsers">🖥️ Browser: Google Chrome</p>
+              <a href="./qa/playwright-report/index.html">📊 Playwright Report</a>
+              <a href="./qa/playwright-html-report/index.html">📄 HTML Report</a>
+              <a href="./qa/allure-report/index.html">📈 Allure Report</a>
+            </div>
+
+            <div class="env-section stage">
+              <h3>🎯 STAGE Environment</h3>
+              <p class="browsers">🖥️ Browser: Google Chrome</p>
+              <a href="./stage/playwright-report/index.html">📊 Playwright Report</a>
+              <a href="./stage/playwright-html-report/index.html">📄 HTML Report</a>
+              <a href="./stage/allure-report/index.html">📈 Allure Report</a>
+            </div>
+
+            <div class="env-section prod">
+              <h3>🚀 PROD Environment</h3>
+              <p class="browsers">🖥️ Browsers: Chrome | Edge | Firefox | WebKit</p>
+              <a href="./prod/playwright-report/index.html">📊 Playwright Report</a>
+              <a href="./prod/playwright-html-report/index.html">📄 HTML Report</a>
+              <a href="./prod/allure-report/index.html">📈 Allure Report</a>
+            </div>
+          </body>
+          </html>
+          EOF
+
+      # ── Deploy to GitHub Pages ───────────────────────────────────────────
+      - name: 🌐 Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: github-pages
+          keep_files: true
+
+      - name: 🔗 Print Report URLs
+        run: |
+          BASE="${{ env.BASE_URL }}"
+          echo "============================================"
+          echo "📊 REPORTS PUBLISHED TO GITHUB PAGES"
+          echo "============================================"
+          echo "🏠 Dashboard : ${BASE}/"
+          echo ""
+          echo "🔧 DEV   → ${BASE}/dev/allure-report/index.html"
+          echo "🔍 QA    → ${BASE}/qa/allure-report/index.html"
+          echo "🎯 STAGE → ${BASE}/stage/allure-report/index.html"
+          echo "🚀 PROD  → ${BASE}/prod/allure-report/index.html"
+          echo "============================================"
+
+# ════════════════════════════════════════════════════
+# JOB 6 — Email Notification
+# Runs after all jobs complete (pass or fail)
+# ════════════════════════════════════════════════════
+  notify:
+    name: 📬 Send Email Notification
+    runs-on: ubuntu-latest
+    needs: [dev-tests, qa-tests, stage-tests, prod-tests, publish-reports]
+    if: always()
+
+    steps:
+      - name: 🔍 Determine Pipeline Status
+        id: status
+        run: |
+          DEV="${{ needs.dev-tests.result }}"
+          QA="${{ needs.qa-tests.result }}"
+          STAGE="${{ needs.stage-tests.result }}"
+          PROD="${{ needs.prod-tests.result }}"
+
+          echo "DEV=$DEV | QA=$QA | STAGE=$STAGE | PROD=$PROD"
+
+          if [[ "$DEV" == "success" && "$QA" == "success" && "$STAGE" == "success" && "$PROD" == "success" ]]; then
+            echo "text=✅ All Tests Passed"  >> $GITHUB_OUTPUT
+            echo "color=#27ae60"             >> $GITHUB_OUTPUT
+          elif [[ "$DEV" == "failure" || "$QA" == "failure" || "$STAGE" == "failure" || "$PROD" == "failure" ]]; then
+            echo "text=❌ Tests Failed"      >> $GITHUB_OUTPUT
+            echo "color=#e74c3c"             >> $GITHUB_OUTPUT
+          else
+            echo "text=⚠️ Partially Done"   >> $GITHUB_OUTPUT
+            echo "color=#f39c12"             >> $GITHUB_OUTPUT
+          fi
+
+          # Per-environment emoji
+          [[ "$DEV"   == "success" ]] && echo "dev_e=✅"   >> $GITHUB_OUTPUT || echo "dev_e=❌"   >> $GITHUB_OUTPUT
+          [[ "$QA"    == "success" ]] && echo "qa_e=✅"    >> $GITHUB_OUTPUT || echo "qa_e=❌"    >> $GITHUB_OUTPUT
+          [[ "$STAGE" == "success" ]] && echo "stage_e=✅" >> $GITHUB_OUTPUT || echo "stage_e=❌" >> $GITHUB_OUTPUT
+          [[ "$PROD"  == "success" ]] && echo "prod_e=✅"  >> $GITHUB_OUTPUT || echo "prod_e=❌"  >> $GITHUB_OUTPUT
+
+      - name: 📧 Send Email
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: "${{ steps.status.outputs.text }} | Playwright Pipeline | ${{ github.repository }}"
+          to: ${{ secrets.NOTIFICATION_EMAILS }}
+          from: ${{ secrets.MAIL_FROM }}
+          html_body: |
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; color: #333; }
+                .header { background: ${{ steps.status.outputs.color }}; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+                .content { background: #f9f9f9; padding: 20px; border-radius: 0 0 8px 8px; }
+                table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+                th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+                th { background: #ecf0f1; }
+                .btn { display: inline-block; padding: 10px 18px; background: #3498db; color: white !important; text-decoration: none; border-radius: 5px; margin: 4px; }
+                .footer { text-align: center; margin-top: 20px; color: #999; font-size: 12px; }
+              </style>
+            </head>
+            <body>
+              <div class="header">
+                <h2>${{ steps.status.outputs.text }}</h2>
+                <p>Playwright POM Automation Pipeline</p>
+              </div>
+              <div class="content">
+                <h3>Pipeline Info</h3>
+                <table>
+                  <tr><th>Repository</th><td>${{ github.repository }}</td></tr>
+                  <tr><th>Branch</th><td>${{ github.ref_name }}</td></tr>
+                  <tr><th>Triggered by</th><td>${{ github.actor }}</td></tr>
+                  <tr><th>Run Number</th><td>#${{ github.run_number }}</td></tr>
+                  <tr><th>Author</th><td>Nikhil Kakde</td></tr>
+                </table>
+
+                <h3>Environment Results</h3>
+                <table>
+                  <tr><th>Environment</th><th>Browsers</th><th>Status</th></tr>
+                  <tr>
+                    <td>🔧 DEV</td>
+                    <td>Chrome</td>
+                    <td>${{ steps.status.outputs.dev_e }} ${{ needs.dev-tests.result }}</td>
+                  </tr>
+                  <tr>
+                    <td>🔍 QA</td>
+                    <td>Chrome</td>
+                    <td>${{ steps.status.outputs.qa_e }} ${{ needs.qa-tests.result }}</td>
+                  </tr>
+                  <tr>
+                    <td>🎯 STAGE</td>
+                    <td>Chrome</td>
+                    <td>${{ steps.status.outputs.stage_e }} ${{ needs.stage-tests.result }}</td>
+                  </tr>
+                  <tr>
+                    <td>🚀 PROD</td>
+                    <td>Chrome | Edge | Firefox | WebKit</td>
+                    <td>${{ steps.status.outputs.prod_e }} ${{ needs.prod-tests.result }}</td>
+                  </tr>
+                </table>
+
+                <h3>📊 View Reports</h3>
+          <a href="https://nikhilkakde07.github.io/Playwright-BestPractices/" class="btn">🏠 Dashboard</a>
+                <a href="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" class="btn">🔗 View Run</a>
+                <br><br>
+                <table>
+                  <tr><th>Environment</th><th>Allure</th><th>Playwright</th><th>HTML</th></tr>
+                  <tr>
+                    <td>🔧 DEV</td>
+                    <td><a href="${{ env.BASE_URL }}/dev/allure-report/">Allure</a></td>
+                    <td><a href="${{ env.BASE_URL }}/dev/playwright-report/">Playwright</a></td>
+                    <td><a href="${{ env.BASE_URL }}/dev/playwright-html-report/">HTML</a></td>
+                  </tr>
+                  <tr>
+                    <td>🔍 QA</td>
+                    <td><a href="${{ env.BASE_URL }}/qa/allure-report/">Allure</a></td>
+                    <td><a href="${{ env.BASE_URL }}/qa/playwright-report/">Playwright</a></td>
+                    <td><a href="${{ env.BASE_URL }}/qa/playwright-html-report/">HTML</a></td>
+                  </tr>
+                  <tr>
+                    <td>🎯 STAGE</td>
+                    <td><a href="${{ env.BASE_URL }}/stage/allure-report/">Allure</a></td>
+                    <td><a href="${{ env.BASE_URL }}/stage/playwright-report/">Playwright</a></td>
+                    <td><a href="${{ env.BASE_URL }}/stage/playwright-html-report/">HTML</a></td>
+                  </tr>
+                  <tr>
+                    <td>🚀 PROD</td>
+                    <td><a href="${{ env.BASE_URL }}/prod/allure-report/">Allure</a></td>
+                    <td><a href="${{ env.BASE_URL }}/prod/playwright-report/">Playwright</a></td>
+                    <td><a href="${{ env.BASE_URL }}/prod/playwright-html-report/">HTML</a></td>
+                  </tr>
+                </table>
+              </div>
+              <div class="footer">Automated notification from GitHub Actions | ${{ github.repository }} | Run #${{ github.run_number }}</div>
+            </body>
+            </html>
