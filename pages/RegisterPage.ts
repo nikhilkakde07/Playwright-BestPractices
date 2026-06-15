@@ -1,6 +1,4 @@
-import{test,expect, Page, Locator} from "@playwright/test"
-import { title } from "node:process";
-
+import { expect, Page, Locator } from "@playwright/test";
 
 /**
  * RegisterPage
@@ -9,211 +7,214 @@ import { title } from "node:process";
  * Reached after clicking Signup from the LoginPage.
  *
  * Contains all locators and actions for the full registration form:
- * account info section + address info section.
+ *   1. Account Information section (title, password, DOB, checkboxes)
+ *   2. Address Information section (name, address, country, mobile)
+ *   3. Post registration (Account Created heading + Continue button)
  */
 
 export class RegisterPage {
 
-    private readonly page:Page
-     // "Enter Account Information" heading
-  private readonly accountInfoHeading: Locator;
+    // ─── Page instance ────────────────────────────────────────────────────────
+    private readonly page: Page
 
-  // "Mr." radio button
-  private readonly titleMrRadio: Locator;
+    // ─── Account Information Section Locators ─────────────────────────────────
 
-  // "Mrs." radio button
-  private readonly titleMrsRadio: Locator;
+    // "Enter Account Information" heading
+    private readonly accountInfoHeading: Locator
 
-  // Password input
-  private readonly passwordInput: Locator;
+    // Title radio buttons
+    private readonly titleMrRadio: Locator
+    private readonly titleMrsRadio: Locator
 
-  // Date of birth — Day dropdown
-  private readonly dobDaySelect: Locator;
+    // Password input
+    private readonly passwordInput: Locator
 
-  // Date of birth — Month dropdown
-  private readonly dobMonthSelect: Locator;
+    // Date of birth dropdowns
+    private readonly dobDaySelect: Locator
+    private readonly dobMonthSelect: Locator
+    private readonly dobYearSelect: Locator
 
-  // Date of birth — Year dropdown
-  private readonly dobYearSelect: Locator;
+    // Checkboxes
+    private readonly newsletterCheckbox: Locator
+    private readonly offersCheckbox: Locator
 
-  // Newsletter checkbox
-  private readonly newsletterCheckbox: Locator;
+    // ─── Address Information Section Locators ─────────────────────────────────
 
-  // Special offers checkbox
-  private readonly offersCheckbox: Locator;
+    // Name fields
+    private readonly firstNameInput: Locator
+    private readonly lastNameInput: Locator
 
-  // ─── Address Info Section Locators ────────────────────────────────────────
+    // Company (optional)
+    private readonly companyInput: Locator
 
-  // First name input
-  private readonly firstNameInput: Locator;
+    // Address fields
+    private readonly address1Input: Locator
+    private readonly address2Input: Locator
 
-  // Last name input
-  private readonly lastNameInput: Locator;
+    // Country, state, city, zipcode, mobile
+    private readonly countrySelect: Locator
+    private readonly stateInput: Locator
+    private readonly cityInput: Locator
+    private readonly zipcodeInput: Locator
+    private readonly mobileInput: Locator
 
-  // Company input (optional)
-  private readonly companyInput: Locator;
+    // Create Account submit button
+    private readonly createAccountBtn: Locator
 
-  // Address line 1
-  private readonly address1Input: Locator;
+    // ─── Post Registration Locators ───────────────────────────────────────────
 
-  // Address line 2 (optional)
-  private readonly address2Input: Locator;
+    // "Account Created!" heading shown after successful registration
+    private readonly accountCreatedHeading: Locator
 
-  // Country dropdown
-  private readonly countrySelect: Locator;
+    // "Continue" button shown after account is created
+    private readonly continueBtn: Locator
 
-  // State input
-  private readonly stateInput: Locator;
+    // ─── Constructor ──────────────────────────────────────────────────────────
 
-  // City input
-  private readonly cityInput: Locator;
+    constructor(page: Page) {
 
-  // Zipcode input
-  private readonly zipcodeInput: Locator;
+        this.page = page
 
-  // Mobile number input
-  private readonly mobileInput: Locator;
+        // Account information locators ----------------------------------------
+        this.accountInfoHeading  = page.locator("//b[contains(text(),'Enter Account Information')]")
+        this.titleMrRadio        = page.locator('#id_gender1')
+        this.titleMrsRadio       = page.locator('#id_gender2')
+        this.passwordInput       = page.locator('#password')
+        this.dobDaySelect        = page.locator('#days')
+        this.dobMonthSelect      = page.locator('#months')
+        this.dobYearSelect       = page.locator('#years')
+        this.newsletterCheckbox  = page.locator('#newsletter')
+        this.offersCheckbox      = page.locator('#optin')
 
-  // "Create Account" submit button
-  private readonly createAccountBtn: Locator;
+        // Address information locators ----------------------------------------
+        this.firstNameInput  = page.locator('#first_name')
+        this.lastNameInput   = page.locator('#last_name')
+        this.companyInput    = page.locator('#company')
+        this.address1Input   = page.locator('#address1')
+        this.address2Input   = page.locator('#address2')
+        this.countrySelect   = page.locator('#country')
+        this.stateInput      = page.locator('#state')
+        this.cityInput       = page.locator('#city')
+        this.zipcodeInput    = page.locator('#zipcode')
+        this.mobileInput     = page.locator('#mobile_number')
+        this.createAccountBtn = page.getByRole('button', { name: 'Create Account' })
 
-   // ─── Post Registration Locators ───────────────────────────────────────────
+        // Post registration locators ------------------------------------------
+        this.accountCreatedHeading = page.locator("//b[text()='Account Created!']")
+        this.continueBtn           = page.getByRole('link', { name: 'Continue' })
+    }
 
-  // "Account Created!" heading shown after successful registration
-  private readonly accountCreatedHeading: Locator;
+    // ─── Actions ──────────────────────────────────────────────────────────────
 
-  // "Continue" button shown after account creation
-  private readonly continueBtn: Locator;
+    /**
+     * Fill out the complete registration form and submit
+     * @param data - all required registration fields
+     */
+    async fillRegistrationForm(data: {
+        title: 'Mr' | 'Mrs'
+        password: string
+        dobDay: string
+        dobMonth: string
+        dobYear: string
+        firstName: string
+        lastName: string
+        company?: string
+        address1: string
+        address2?: string
+        country: string
+        state: string
+        city: string
+        zipcode: string
+        mobile: string
+    }): Promise<void> {
 
+        // Step 1: Select title Mr or Mrs
+        if (data.title === 'Mr') {
+            await this.titleMrRadio.click()
+        } else {
+            await this.titleMrsRadio.click()
+        }
 
-constructor(page:Page){
-    this.page=page
-       // Account info locators
-    this.accountInfoHeading  = page.locator("//h2[contains(text(),'Enter Account Information')]");
-    this.titleMrRadio        = page.locator('#id_gender1');
-    this.titleMrsRadio       = page.locator('#id_gender2');
-    this.passwordInput       = page.locator('#password');
-    this.dobDaySelect        = page.locator('#days');
-    this.dobMonthSelect      = page.locator('#months');
-    this.dobYearSelect       = page.locator('#years');
-    this.newsletterCheckbox  = page.locator('#newsletter');
-    this.offersCheckbox      = page.locator('#optin');
+        // Step 2: Enter password
+        await this.passwordInput.fill(data.password)
 
-    // Address info locators
-    this.firstNameInput  = page.locator('#first_name');
-    this.lastNameInput   = page.locator('#last_name');
-    this.companyInput    = page.locator('#company');
-    this.address1Input   = page.locator('#address1');
-    this.address2Input   = page.locator('#address2');
-    this.countrySelect   = page.locator('#country');
-    this.stateInput      = page.locator('#state');
-    this.cityInput       = page.locator('#city');
-    this.zipcodeInput    = page.locator('#zipcode');
-    this.mobileInput     = page.locator('#mobile_number');
-    this.createAccountBtn = page.getByRole('button', { name: 'Create Account' });
+        // Step 3: Select day of birth
+        await this.dobDaySelect.selectOption(data.dobDay)
 
-    
-      // Post registration locators
-    this.accountCreatedHeading = page.locator("//h2[@data-qa='account-created']");
-    this.continueBtn           = page.getByRole('link', { name: 'Continue' });
+        // Step 4: Select month of birth
+        await this.dobMonthSelect.selectOption(data.dobMonth)
+
+        // Step 5: Select year of birth
+        await this.dobYearSelect.selectOption(data.dobYear)
+
+        // Step 6: Check newsletter checkbox if not already checked
+        if (!(await this.newsletterCheckbox.isChecked())) {
+            await this.newsletterCheckbox.check()
+        }
+
+        // Step 7: Check special offers checkbox if not already checked
+        if (!(await this.offersCheckbox.isChecked())) {
+            await this.offersCheckbox.check()
+        }
+
+        // Step 8: Fill first name
+        await this.firstNameInput.fill(data.firstName)
+
+        // Step 9: Fill last name
+        await this.lastNameInput.fill(data.lastName)
+
+        // Step 10: Fill company name (optional)
+        if (data.company) {
+            await this.companyInput.fill(data.company)
+        }
+
+        // Step 11: Fill address line 1
+        await this.address1Input.fill(data.address1)
+
+        // Step 12: Fill address line 2 (optional)
+        if (data.address2) {
+            await this.address2Input.fill(data.address2)
+        }
+
+        // Step 13: Select country from dropdown
+        await this.countrySelect.selectOption(data.country)
+
+        // Step 14: Fill state
+        await this.stateInput.fill(data.state)
+
+        // Step 15: Fill city
+        await this.cityInput.fill(data.city)
+
+        // Step 16: Fill zipcode
+        await this.zipcodeInput.fill(data.zipcode)
+
+        // Step 17: Fill mobile number
+        await this.mobileInput.fill(data.mobile)
+
+        // Step 18: Click Create Account button to submit the form
+        await this.createAccountBtn.click()
+    }
+
+    /**
+     * Verify "Account Created!" heading is visible after registration
+     */
+    async verifyAccountCreated(): Promise<void> {
+        await expect(this.accountCreatedHeading).toBeVisible()
+    }
+
+    /**
+     * Click the Continue button after account creation
+     * Redirects to homepage as a logged-in user
+     */
+    async clickContinue(): Promise<void> {
+        await this.continueBtn.click()
+    }
+
+    /**
+     * Verify the registration form heading is visible
+     * Used to confirm we landed on the correct page
+     */
+    async verifyPageLoaded(): Promise<void> {
+        await expect(this.accountInfoHeading).toBeVisible()
+    }
 }
-
- // ─── Actions ──────────────────────────────────────────────────────────────
-
-  /**
-   * Fill out the entire registration form and submit
-   * @param data - all required registration fields
-   */
-
-  async fillRegistrationForm(data:{
-
-    title: 'Mr' | 'Mrs'
-    password: string
-    dobDay:string
-    dobMonth: string;
-    dobYear: string;
-    firstName: string;
-    lastName: string;
-    company?: string;
-    address1: string;
-    address2?: string;
-    country: string;
-    state: string;
-    city: string;
-    zipcode: string;
-    mobile: string;
-
-  })
-  {
-     // Step 1: Select title Mr or Mrs
-
-     if(data.title==='Mr'){
-
-        await this.titleMrRadio.check()
-     }else{
-        await this.titleMrsRadio.check()
-     }
-
-     // Step 2: Enter password
-    await this.passwordInput.fill(data.password);
-
-    //  // Step 3: Select day of birth from dropdown
-    await this.dobDaySelect.selectOption(data.dobDay)
-
-    // Step 4: Select month of birth from dropdown
-    await this.dobMonthSelect.selectOption(data.dobMonth);
-
-    // Step 5: Select year of birth from dropdown
-    await this.dobYearSelect.selectOption(data.dobYear);
-
-      // Step 6: Check newsletter checkbox
-    if (!(await this.newsletterCheckbox.isChecked())) {
-      await this.newsletterCheckbox.check();
-    }
-
-    // Step 7: Check special offers checkbox
-    if (!(await this.offersCheckbox.isChecked())) {
-      await this.offersCheckbox.check();
-    }
-
-      // Step 8: Fill first name
-    await this.firstNameInput.fill(data.firstName);
-
-    // Step 9: Fill last name
-    await this.lastNameInput.fill(data.lastName);
-
-    // Step 10: Fill company (optional)
-    if (data.company) {
-      await this.companyInput.fill(data.company);
-    }
-
-    // Step 11: Fill address line 1
-    await this.address1Input.fill(data.address1);
-
-    // Step 12: Fill address line 2 (optional)
-    if (data.address2) {
-      await this.address2Input.fill(data.address2);
-    }
-
-    // Step 13: Select country from dropdown
-    await this.countrySelect.selectOption(data.country);
-
-    // Step 14: Fill state
-    await this.stateInput.fill(data.state);
-
-    // Step 15: Fill city
-    await this.cityInput.fill(data.city);
-
-    // Step 16: Fill zipcode
-    await this.zipcodeInput.fill(data.zipcode);
-
-    // Step 17: Fill mobile number
-    await this.mobileInput.fill(data.mobile);
-
-    // Step 18: Click Create Account button to submit the form
-    await this.createAccountBtn.click();
-  
-    
-  }
-}
-
