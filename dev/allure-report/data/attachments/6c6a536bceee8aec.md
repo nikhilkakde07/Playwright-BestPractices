@@ -1,0 +1,303 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: Accessibilitytest.spec.ts >> Accessibility Scan
+- Location: tests/Accessibilitytest.spec.ts:4:5
+
+# Error details
+
+```
+Error: expect(received).toEqual(expected) // deep equality
+
+- Expected  -   1
++ Received  + 120
+
+- Array []
++ Array [
++   Object {
++     "description": "Ensure the main landmark is at top level",
++     "help": "Main landmark should not be contained in another landmark",
++     "helpUrl": "https://dequeuniversity.com/rules/axe/4.11/landmark-main-is-top-level?application=playwright",
++     "id": "landmark-main-is-top-level",
++     "impact": "moderate",
++     "nodes": Array [
++       Object {
++         "all": Array [],
++         "any": Array [
++           Object {
++             "data": Object {
++               "role": "main",
++             },
++             "id": "landmark-is-top-level",
++             "impact": "moderate",
++             "message": "The main landmark is contained in another landmark.",
++             "relatedNodes": Array [],
++           },
++         ],
++         "failureSummary": "Fix any of the following:
++   The main landmark is contained in another landmark.",
++         "html": "<div id=\"KfaMainContentId\" role=\"main\" tabindex=\"-1\">",
++         "impact": "moderate",
++         "none": Array [],
++         "target": Array [
++           "#KfaMainContentId",
++         ],
++       },
++     ],
++     "tags": Array [
++       "cat.semantics",
++       "best-practice",
++     ],
++   },
++   Object {
++     "description": "Ensure the document has at most one main landmark",
++     "help": "Document should not have more than one main landmark",
++     "helpUrl": "https://dequeuniversity.com/rules/axe/4.11/landmark-no-duplicate-main?application=playwright",
++     "id": "landmark-no-duplicate-main",
++     "impact": "moderate",
++     "nodes": Array [
++       Object {
++         "all": Array [],
++         "any": Array [
++           Object {
++             "data": null,
++             "id": "page-no-duplicate-main",
++             "impact": "moderate",
++             "message": "Document has more than one main landmark",
++             "relatedNodes": Array [
++               Object {
++                 "html": "<div id=\"KfaMainContentId\" role=\"main\" tabindex=\"-1\">",
++                 "target": Array [
++                   "#KfaMainContentId",
++                 ],
++               },
++             ],
++           },
++         ],
++         "failureSummary": "Fix any of the following:
++   Document has more than one main landmark",
++         "html": "<main name=\"microv1prod Prdo\" content=\"[object Object]\" class=\"sc-eqUAAy kVYbjz\">",
++         "impact": "moderate",
++         "none": Array [],
++         "target": Array [
++           "main",
++         ],
++       },
++     ],
++     "tags": Array [
++       "cat.semantics",
++       "best-practice",
++     ],
++   },
++   Object {
++     "description": "Ensure landmarks are unique",
++     "help": "Landmarks should have a unique role or role/label/title (i.e. accessible name) combination",
++     "helpUrl": "https://dequeuniversity.com/rules/axe/4.11/landmark-unique?application=playwright",
++     "id": "landmark-unique",
++     "impact": "moderate",
++     "nodes": Array [
++       Object {
++         "all": Array [],
++         "any": Array [
++           Object {
++             "data": Object {
++               "accessibleText": null,
++               "role": "main",
++             },
++             "id": "landmark-is-unique",
++             "impact": "moderate",
++             "message": "The landmark must have a unique aria-label, aria-labelledby, or title to make landmarks distinguishable",
++             "relatedNodes": Array [
++               Object {
++                 "html": "<div id=\"KfaMainContentId\" role=\"main\" tabindex=\"-1\">",
++                 "target": Array [
++                   "#KfaMainContentId",
++                 ],
++               },
++             ],
++           },
++         ],
++         "failureSummary": "Fix any of the following:
++   The landmark must have a unique aria-label, aria-labelledby, or title to make landmarks distinguishable",
++         "html": "<main name=\"microv1prod Prdo\" content=\"[object Object]\" class=\"sc-eqUAAy kVYbjz\">",
++         "impact": "moderate",
++         "none": Array [],
++         "target": Array [
++           "main",
++         ],
++       },
++     ],
++     "tags": Array [
++       "cat.semantics",
++       "best-practice",
++     ],
++   },
++ ]
+```
+
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - main [ref=e3]:
+    - link "Skip to main content" [ref=e4] [cursor=pointer]:
+      - /url: "#KfaMainContentId"
+    - generic [ref=e8]:
+      - link "KornFerry Logo" [ref=e10] [cursor=pointer]:
+        - /url: /
+        - img "Microsoft powered by Kornferry Advance logo" [ref=e11]
+      - generic [ref=e13]:
+        - generic [ref=e15]: Microv1prod Prdo
+        - button "User Profile" [ref=e17] [cursor=pointer]:
+          - img "user avatar" [ref=e19]
+    - navigation "main navigation" [ref=e21]:
+      - generic [ref=e22]:
+        - list [ref=e23]:
+          - listitem [ref=e24] [cursor=pointer]:
+            - link "Go to HOME" [ref=e25]: HOME
+          - listitem [ref=e26] [cursor=pointer]:
+            - link "Go to ASSESSMENTS" [ref=e27]: ASSESSMENTS
+          - listitem [ref=e28] [cursor=pointer]:
+            - link "Go to COACHING" [ref=e29]: COACHING
+          - listitem [ref=e30] [cursor=pointer]:
+            - link "Go to SUPPORT & FAQS" [ref=e31]: SUPPORT & FAQS
+        - separator [ref=e33]
+    - generic [ref=e34]:
+      - main [ref=e35]:
+        - generic [ref=e37]:
+          - generic [ref=e38]:
+            - generic [ref=e39]:
+              - heading "Welcome to Your Coaching Experience" [level=1] [ref=e40]:
+                - generic [ref=e41]: Welcome to Your Coaching Experience
+              - separator [ref=e42]
+              - generic [ref=e43]: We're here to empower your professional growth. Learn more about yourself and partner with your coach to reach your development goals.
+            - generic [ref=e45]:
+              - img "Take your assessmentsflipIcon" [ref=e50] [cursor=pointer]:
+                - generic [ref=e53]: Take your assessments
+                - generic "Flip Icon" [ref=e56]:
+                  - img [ref=e57]
+              - img "Meet with your coachflipIcon" [ref=e65] [cursor=pointer]:
+                - generic [ref=e68]:
+                  - text: Meet
+                  - text: with your
+                  - text: coach
+                - generic "Flip Icon" [ref=e71]:
+                  - img [ref=e72]
+          - generic [ref=e76]:
+            - generic [ref=e77]:
+              - generic [ref=e81]: Welcome, Microv1prod!
+              - generic [ref=e88]:
+                - heading "Your Goals." [level=2] [ref=e89]:
+                  - generic [ref=e90]: Your Goals
+                - paragraph [ref=e91]:
+                  - text: Tap the goal card to show and hide details.
+                  - text: 1 Goal in Progress (Maximum 3 active)
+                - generic [ref=e92]:
+                  - list [ref=e93]:
+                    - listitem [ref=e94]:
+                      - generic [ref=e96]:
+                        - region "Goal Priority 1. Target Date (No date set)." [ref=e99]:
+                          - text: Goal Priority 1 |
+                          - strong [ref=e100]: Target Date (No date set)
+                        - link "Goal Priority 1. Target Date (No date set)." [ref=e101] [cursor=pointer]:
+                          - region "goal1." [ref=e103]:
+                            - generic [ref=e104]: goal1
+                  - status [ref=e105]
+                  - button "+ Add Goal" [ref=e107] [cursor=pointer]: + Add Goal
+            - generic [ref=e108]:
+              - text: Have questions?
+              - text: Review the
+              - link "FAQS" [ref=e109] [cursor=pointer]:
+                - /url: /chat
+                - text: FAQs
+              - text: or reach out via our 24/7 Chat
+              - link "Support" [ref=e110] [cursor=pointer]:
+                - /url: /chat
+              - text: .
+      - generic [ref=e111]:
+        - generic [ref=e112]:
+          - link "KornFerry Logo" [ref=e113] [cursor=pointer]:
+            - /url: /
+            - img "Microsoft powered by Kornferry Advance logo" [ref=e114]
+          - generic [ref=e115]:
+            - navigation "Services" [ref=e116]:
+              - generic "Services" [ref=e117]
+              - list "Services" [ref=e118]:
+                - listitem [ref=e119]:
+                  - link "Coaching" [ref=e120] [cursor=pointer]:
+                    - /url: /coaching
+                - listitem [ref=e121]:
+                  - link "Assessments" [ref=e122] [cursor=pointer]:
+                    - /url: /assessments
+                - listitem [ref=e123]:
+                  - link "Support & Faqs" [ref=e124] [cursor=pointer]:
+                    - /url: /chat
+                    - text: Support & FAQs
+            - navigation "Policies_and_Disclosure" [ref=e125]:
+              - generic "Policies_and_Disclosure" [ref=e126]: Policies and Disclosure
+              - list "Policies_and_Disclosure" [ref=e127]:
+                - listitem [ref=e128]:
+                  - link "Terms of Use" [ref=e129] [cursor=pointer]:
+                    - /url: https://cdn.kornferry.com/kfadvance/tou/Microsoft-Terms-of-Use.en-US.pdf
+                - listitem [ref=e130]:
+                  - link "Global Privacy Policy" [ref=e131] [cursor=pointer]:
+                    - /url: https://cdn.kornferry.com/privacy/en-us/privacy.pdf
+        - generic [ref=e132]:
+          - generic [ref=e133]:
+            - paragraph [ref=e134]:
+              - generic [ref=e135]: © Korn Ferry 2026. All Rights Reserved.
+            - paragraph [ref=e136]:
+              - generic [ref=e137]:
+                - text: "Contact us at:"
+                - link "CTS-Support@KornFerry.com" [ref=e139] [cursor=pointer]:
+                  - /url: mailto:CTS-Support@KornFerry.com
+          - generic [ref=e140]:
+            - paragraph [ref=e141]: English
+            - img "Flag representing English language" [ref=e142]
+  - complementary "Open Cookie Preferences Modal" [ref=e143]:
+    - link "Cookie Preferences, opens a dedicated popup modal window" [ref=e144] [cursor=pointer]: Cookie Preferences
+```
+
+# Test source
+
+```ts
+  1  | import { Page,test, expect } from '@playwright/test';
+  2  | import AxeBuilder from '@axe-core/playwright';
+  3  | 
+  4  | test('Accessibility Scan', async ({ page }) => {
+  5  |   await page.goto('https://client.kfadvance.com/login');
+  6  |   await page.locator("//button[@id='truste-consent-button']").click()
+  7  |   await page.locator("#email").fill("nikhilkakde967+cocv1+microso+prrrd@gmail.com")
+  8  |   await page.locator("#next-btn").click()
+  9  |   await page.locator('#password').fill("Conference1!")
+  10 |   await page.getByRole('button',{name:'LOG IN'}).click()
+  11 | 
+  12 | const goal=await page.getByRole('button',{name:'+ Add Goal'})
+  13 |   console.log("Is goal visible",await goal.innerText());
+  14 |   
+  15 |    // Wait until login is successful
+  16 |  
+  17 | 
+  18 |   console.log('Login successful - Running accessibility scan');
+  19 | 
+  20 |   // Run accessibility scan AFTER login
+  21 |   const results = await new AxeBuilder({ page }).analyze();
+  22 | 
+  23 |   console.log(`Violations: ${results.violations.length}`);
+  24 | 
+> 25 |   expect(results.violations).toEqual([]);
+     |                              ^ Error: expect(received).toEqual(expected) // deep equality
+  26 | });
+  27 | 
+  28 |   //nikhilkakde967+cocv1+microso+prrrd@gmail.com
+  29 | 
+  30 | 
+  31 | 
+  32 | 
+  33 | //npx playwright test tests/Accessibilitytest.spec.ts --headed
+```

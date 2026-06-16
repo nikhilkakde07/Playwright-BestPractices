@@ -1,0 +1,3 @@
+Is goal visible + Add Goal
+Login successful - Running accessibility scan
+Violations: 3
