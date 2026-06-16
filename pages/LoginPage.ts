@@ -95,7 +95,7 @@ export class LoginPage{
 
 //Now initialize the constructor
 
-constructor(page:Page){
+    constructor(page:Page){
 
     //Login section locators ------------------------
     this.page=page
